@@ -232,7 +232,17 @@ public struct FileOps {
     ) throws {
         let name = url.lastPathComponent
         let target = dest.appendingPathComponent(name)
-        if stdPath(target) == stdPath(url) { return }
+        if stdPath(target) == stdPath(url) {
+            if moving { return }
+            switch try resolve(name) {
+            case .skip, .replace:
+                return
+            case .keepBoth:
+                let unique = keepBothName(in: dest, existingName: name)
+                try write(url, to: dest.appendingPathComponent(unique), moving: false, dest: dest)
+            }
+            return
+        }
         if fm.fileExists(atPath: target.path) {
             switch try resolve(name) {
             case .skip:

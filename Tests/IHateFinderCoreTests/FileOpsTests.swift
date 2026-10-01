@@ -107,6 +107,25 @@ final class FileOpsTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: bin.appendingPathComponent("a.txt").path))
     }
 
+    func testCopyIntoSameFolderKeepsBoth() throws {
+        try write("note.txt", "body")
+        let ops = makeOps(same: true)
+        let url = root.appendingPathComponent("note.txt")
+        try ops.paste(urls: [url], cut: false, into: root, resolve: { _ in .keepBoth })
+        XCTAssertEqual(try text("note.txt"), "body")
+        XCTAssertEqual(try text("note (1).txt"), "body")
+    }
+
+    func testCopyIntoSameFolderReplaceLeavesOriginal() throws {
+        try write("note.txt", "body")
+        let ops = makeOps(same: true)
+        let url = root.appendingPathComponent("note.txt")
+        try ops.paste(urls: [url], cut: false, into: root, resolve: { _ in .replace })
+        XCTAssertEqual(try text("note.txt"), "body")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: bin.appendingPathComponent("note.txt").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("note (1).txt").path))
+    }
+
     func testCreateFolderAndTextFileNumberDuplicates() throws {
         let ops = makeOps(same: true)
         let first = try ops.createFolder(in: root)
