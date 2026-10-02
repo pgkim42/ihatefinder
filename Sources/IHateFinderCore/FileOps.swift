@@ -41,11 +41,52 @@ public struct FileEntry: Equatable {
     }
 }
 
-public struct FileOpError: Error, Equatable {
+public struct FileOpError: Error, LocalizedError, Equatable {
     public var message: String
 
     public init(_ message: String) {
         self.message = message
+    }
+
+    public var errorDescription: String? { message }
+}
+
+public enum FileTransferStatus: Equatable {
+    case completed
+    case skipped
+    case failed
+    case cancelled
+    case unprocessed
+}
+
+public struct FileTransferRecovery: Equatable {
+    public enum Status: Equatable {
+        case preserved
+        case restored
+        case manualRecoveryRequired
+    }
+
+    public let status: Status
+    public let locations: [URL]
+    public let message: String
+}
+
+public struct FileTransferItemResult: Equatable {
+    public let source: URL
+    public let destination: URL
+    public let status: FileTransferStatus
+    public let message: String?
+    public let recovery: FileTransferRecovery?
+}
+
+public struct FileTransferReport: Equatable {
+    /// Input order is retained, including items not attempted after failure or cancellation.
+    public let items: [FileTransferItemResult]
+
+    /// For moves, these sources reached their destination (including same-folder no-ops).
+    /// A completed replacement can still have a warning about its preserved old destination.
+    public var completedSources: [URL] {
+        items.compactMap { $0.status == .completed ? $0.source : nil }
     }
 }
 
@@ -53,6 +94,8 @@ public struct FileOps {
     public var sameVolume: (URL, URL) -> Bool
     public var trash: (URL) throws -> Void
     private let fm: FileManager
+    // Internal copy seam keeps fault-injected safety tests on the same staging path.
+    var copy: FileCopyOperation = NativeFileCopy.copy
 
     public init(
         fileManager: FileManager = .default,
@@ -112,17 +155,19 @@ public struct FileOps {
         return url
     }
 
+    /// Callbacks run synchronously on the caller's thread. Byte samples are
+    /// throttled; phase/current-file changes and final byte samples are immediate.
     public func paste(
         urls: [URL],
         cut: Bool,
         into dest: URL,
         resolve: (String) throws -> NameConflict,
-        progress: ((Int, Int, String) -> Void)? = nil
-    ) throws {
-        if cut && urls.allSatisfy({ parentPath($0) == stdPath(dest) }) {
-            return
-        }
-        try transfer(urls: urls, to: dest, moving: cut, resolve: resolve, progress: progress)
+        cancellation: FileTransferCancellation? = nil,
+        progressInterval: TimeInterval = 0.1,
+        progress: ((FileTransferProgress) -> Void)? = nil
+    ) -> FileTransferReport {
+        transfer(urls: urls, to: dest, moving: cut, resolve: resolve,
+                 cancellation: cancellation, progressInterval: progressInterval, progress: progress)
     }
 
     public func transfer(
@@ -130,20 +175,52 @@ public struct FileOps {
         to dest: URL,
         moving: Bool,
         resolve: (String) throws -> NameConflict,
-        progress: ((Int, Int, String) -> Void)? = nil
-    ) throws {
-        guard directoryExists(dest) else {
-            throw FileOpError("대상이 폴더가 아닙니다.")
-        }
-        let total = urls.count
+        cancellation: FileTransferCancellation? = nil,
+        progressInterval: TimeInterval = 0.1,
+        progress: ((FileTransferProgress) -> Void)? = nil
+    ) -> FileTransferReport {
+        var items: [FileTransferItemResult] = []
+        items.reserveCapacity(urls.count)
+        var stopped = false
         for (index, url) in urls.enumerated() {
-            progress?(index + 1, total, url.lastPathComponent)
-            if moving && parentPath(url) == stdPath(dest) { continue }
-            if contains(dest, inside: url) {
-                throw FileOpError("폴더를 그 안으로 옮길 수 없습니다.")
+            let target = dest.appendingPathComponent(url.lastPathComponent)
+            if stopped {
+                items.append(FileTransferItemResult(
+                    source: url, destination: target, status: .unprocessed, message: nil, recovery: nil
+                ))
+                continue
             }
-            try place(url, in: dest, moving: moving, resolve: resolve)
+            let emitter = TransferProgressEmitter(
+                source: url, index: index, total: urls.count, moving: moving,
+                interval: progressInterval, callback: progress
+            )
+            emitter.emit(.preparing)
+            let result: FileTransferItemResult
+            do {
+                try cancellation?.check()
+                guard directoryExists(dest) else {
+                    throw FileOpError("대상이 폴더가 아닙니다.")
+                }
+                guard itemExists(url) else {
+                    throw FileOpError("원본 항목이 없습니다.")
+                }
+                guard !contains(dest, inside: url) else {
+                    throw FileOpError("폴더를 그 안으로 옮길 수 없습니다.")
+                }
+                result = try place(url, at: target, moving: moving, resolve: resolve,
+                                   cancellation: cancellation, progress: emitter)
+            } catch {
+                result = FileTransferItemResult(
+                    source: url, destination: target,
+                    status: error is TransferCancelled ? .cancelled : .failed,
+                    message: error.localizedDescription, recovery: nil
+                )
+            }
+            items.append(result)
+            emitter.emit(.finished)
+            stopped = result.status == .failed || result.status == .cancelled
         }
+        return FileTransferReport(items: items)
     }
 
     public func rename(
@@ -152,32 +229,32 @@ public struct FileOps {
         resolve: (String) throws -> NameConflict
     ) throws {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains("/") else {
+        guard !trimmed.isEmpty, !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
             throw FileOpError("그 이름은 쓸 수 없습니다.")
         }
-        let destDir = url.deletingLastPathComponent()
-        let target = destDir.appendingPathComponent(trimmed)
-        if stdPath(target) == stdPath(url) {
-            if target.lastPathComponent != url.lastPathComponent {
-                let temporary = destDir.appendingPathComponent(".ihatefinder-rename-\(UUID().uuidString)")
-                try fm.moveItem(at: url, to: temporary)
-                try fm.moveItem(at: temporary, to: target)
-            }
-            return
-        }
-        if fm.fileExists(atPath: target.path) {
-            switch try resolve(trimmed) {
-            case .skip:
-                return
-            case .replace:
-                try trash(target)
-                try fm.moveItem(at: url, to: target)
-            case .keepBoth:
-                let unique = keepBothName(in: destDir, existingName: trimmed)
-                try fm.moveItem(at: url, to: destDir.appendingPathComponent(unique))
-            }
+        guard itemExists(url) else { throw FileOpError("원본 항목이 없습니다.") }
+        let target = url.deletingLastPathComponent().appendingPathComponent(trimmed)
+        if stdPath(target) == stdPath(url) { return }
+        let result: FileTransferItemResult
+        // Case-only renames on case-insensitive volumes need an intermediate name,
+        // not replacement of an alias for the source itself.
+        let sourceID = try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+        let targetID = try? target.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
+        if trimmed.caseInsensitiveCompare(url.lastPathComponent) == .orderedSame,
+           let sourceID = sourceID as? NSObject, let targetID = targetID as? NSObject,
+           sourceID == targetID {
+            result = write(url, to: target, moving: true, replacing: false, stagingMove: true)
         } else {
-            try fm.moveItem(at: url, to: target)
+            result = try place(url, at: target, moving: true, resolve: resolve)
+        }
+        if result.status == .failed || result.message != nil {
+            var message = result.message ?? "이름을 바꾸지 못했습니다."
+            message += "\n원본: \(url.path)\n대상: \(result.destination.path)"
+            if let recovery = result.recovery {
+                message += "\n\(recovery.message)"
+                for location in recovery.locations { message += "\n\(location.path)" }
+            }
+            throw FileOpError(message)
         }
     }
 
@@ -226,52 +303,202 @@ public struct FileOps {
 
     private func place(
         _ url: URL,
-        in dest: URL,
+        at target: URL,
         moving: Bool,
-        resolve: (String) throws -> NameConflict
-    ) throws {
-        let name = url.lastPathComponent
-        let target = dest.appendingPathComponent(name)
-        if stdPath(target) == stdPath(url) {
-            if moving { return }
-            switch try resolve(name) {
-            case .skip, .replace:
-                return
-            case .keepBoth:
-                let unique = keepBothName(in: dest, existingName: name)
-                try write(url, to: dest.appendingPathComponent(unique), moving: false, dest: dest)
-            }
-            return
+        resolve: (String) throws -> NameConflict,
+        cancellation: FileTransferCancellation? = nil,
+        progress: TransferProgressEmitter? = nil
+    ) throws -> FileTransferItemResult {
+        try cancellation?.check()
+        let samePath = stdPath(target) == stdPath(url)
+        if moving && samePath {
+            return FileTransferItemResult(
+                source: url, destination: target, status: .completed, message: nil, recovery: nil
+            )
         }
-        if fm.fileExists(atPath: target.path) {
-            switch try resolve(name) {
+        var destination = target
+        var replacing = false
+        if itemExists(target) {
+            let choice = try resolve(target.lastPathComponent)
+            try cancellation?.check()
+            switch choice {
             case .skip:
-                return
+                return FileTransferItemResult(
+                    source: url, destination: target, status: .skipped, message: nil, recovery: nil
+                )
             case .replace:
-                try trash(target)
-                try write(url, to: target, moving: moving, dest: dest)
+                if samePath {
+                    return FileTransferItemResult(
+                        source: url, destination: target, status: .skipped, message: nil, recovery: nil
+                    )
+                }
+                replacing = true
             case .keepBoth:
-                let unique = keepBothName(in: dest, existingName: name)
-                try write(url, to: dest.appendingPathComponent(unique), moving: moving, dest: dest)
+                let directory = target.deletingLastPathComponent()
+                destination = directory.appendingPathComponent(
+                    keepBothName(in: directory, existingName: target.lastPathComponent)
+                )
             }
-        } else {
-            try write(url, to: target, moving: moving, dest: dest)
         }
+        return write(url, to: destination, moving: moving, replacing: replacing,
+                     cancellation: cancellation, progress: progress)
     }
 
-    private func write(_ url: URL, to target: URL, moving: Bool, dest: URL) throws {
-        if moving && sameVolume(url, dest) {
-            try fm.moveItem(at: url, to: target)
-            return
+    private func write(
+        _ url: URL,
+        to target: URL,
+        moving: Bool,
+        replacing: Bool,
+        stagingMove: Bool = false,
+        cancellation: FileTransferCancellation? = nil,
+        progress: TransferProgressEmitter? = nil
+    ) -> FileTransferItemResult {
+        let directory = target.deletingLastPathComponent()
+        let moveSource = moving && sameVolume(url, directory)
+        if moveSource && !replacing && !stagingMove {
+            do {
+                progress?.emit(.committing)
+                try cancellation?.check()
+                try fm.moveItem(at: url, to: target)
+                return FileTransferItemResult(
+                    source: url, destination: target, status: .completed, message: nil, recovery: nil
+                )
+            } catch {
+                return FileTransferItemResult(
+                    source: url, destination: target,
+                    status: error is TransferCancelled ? .cancelled : .failed,
+                    message: error.localizedDescription, recovery: nil
+                )
+            }
         }
-        try fm.copyItem(at: url, to: target)
-        if moving {
+
+        // All copied bytes are written on the destination volume before its old
+        // item is touched. Same-volume moves stage by rename, not by copying.
+        let stage = directory.appendingPathComponent(".ihatefinder-transfer-\(UUID().uuidString)", isDirectory: true)
+        let incoming = stage.appendingPathComponent("incoming", isDirectory: true)
+            .appendingPathComponent(target.lastPathComponent)
+        let previous = stage.appendingPathComponent("previous", isDirectory: true)
+            .appendingPathComponent(target.lastPathComponent)
+        var sourceStaged = false
+        var destinationStaged = false
+        do {
+            try cancellation?.check()
+            try fm.createDirectory(at: incoming.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if moveSource {
+                progress?.emit(.committing)
+                try cancellation?.check()
+                try fm.moveItem(at: url, to: incoming)
+                sourceStaged = true
+            } else {
+                try copy(url, incoming, cancellation) { sample in
+                    progress?.emit(.copying, copy: sample)
+                }
+                progress?.emit(.committing)
+                try cancellation?.check()
+            }
+            // Commit starts here (or at the source rename above). From this point
+            // cancellation cannot interrupt publish, rollback, or source cleanup.
+            if replacing {
+                try fm.createDirectory(at: previous.deletingLastPathComponent(), withIntermediateDirectories: false)
+                try fm.moveItem(at: target, to: previous)
+                destinationStaged = true
+            }
+            try fm.moveItem(at: incoming, to: target)
+        } catch {
+            var recoveryErrors: [String] = []
+            var locations: [URL] = []
+            if sourceStaged {
+                do {
+                    try fm.moveItem(at: incoming, to: url)
+                } catch {
+                    recoveryErrors.append("원본 복구 실패: \(error.localizedDescription)")
+                    locations.append(incoming)
+                }
+            }
+            if destinationStaged {
+                do {
+                    try fm.moveItem(at: previous, to: target)
+                } catch {
+                    recoveryErrors.append("기존 대상 복구 실패: \(error.localizedDescription)")
+                    locations.append(previous)
+                }
+            }
+            // Never clean a stage containing the only surviving original.
+            if recoveryErrors.isEmpty && itemExists(stage) {
+                do {
+                    try fm.removeItem(at: stage)
+                } catch {
+                    recoveryErrors.append("임시 항목 정리 실패: \(error.localizedDescription)")
+                    locations.append(itemExists(incoming) ? incoming : stage)
+                }
+            }
+            let recovery: FileTransferRecovery?
+            if !recoveryErrors.isEmpty {
+                recovery = FileTransferRecovery(
+                    status: .manualRecoveryRequired, locations: locations,
+                    message: recoveryErrors.joined(separator: "\n")
+                )
+            } else if replacing || sourceStaged {
+                recovery = FileTransferRecovery(
+                    status: destinationStaged || sourceStaged ? .restored : .preserved,
+                    locations: replacing ? [url, target] : [url],
+                    message: destinationStaged || sourceStaged
+                        ? "원본과 기존 대상을 작업 전 위치로 복구했습니다."
+                        : "기존 대상과 원본은 작업 전 위치에 보존되어 있습니다."
+                )
+            } else {
+                recovery = nil
+            }
+            return FileTransferItemResult(
+                source: url, destination: target,
+                status: error is TransferCancelled ? .cancelled : .failed,
+                message: error.localizedDescription, recovery: recovery
+            )
+        }
+
+        // The new destination is complete. Failure from here must never remove it.
+        // In particular, a failed cross-volume source trash leaves both full copies.
+        var status: FileTransferStatus = .completed
+        var messages: [String] = []
+        var locations: [URL] = []
+        if moving && !moveSource {
             do {
                 try trash(url)
             } catch {
-                throw FileOpError("복사본은 만들었지만 원본을 휴지통으로 보내지 못했습니다. 원본은 그 자리에 있습니다.")
+                status = .failed
+                messages.append("복사본은 만들었지만 원본을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
+                locations += [url, target]
             }
         }
+        var preservedBackup = false
+        if destinationStaged {
+            do {
+                try trash(previous)
+            } catch {
+                preservedBackup = true
+                messages.append("새 대상은 완성되었지만 기존 대상을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
+                locations.append(previous)
+            }
+        }
+        if !preservedBackup {
+            do {
+                try fm.removeItem(at: stage)
+            } catch {
+                messages.append("임시 폴더 정리 실패: \(error.localizedDescription)")
+                locations.append(stage)
+            }
+        }
+        let message = messages.isEmpty ? nil : messages.joined(separator: "\n")
+        let recovery = message.map {
+            FileTransferRecovery(status: .manualRecoveryRequired, locations: locations, message: $0)
+        }
+        return FileTransferItemResult(
+            source: url, destination: target, status: status, message: message, recovery: recovery
+        )
+    }
+
+    private func itemExists(_ url: URL) -> Bool {
+        fm.fileExists(atPath: url.path) || (try? fm.destinationOfSymbolicLink(atPath: url.path)) != nil
     }
 
     private func freshName(in directory: URL, base: String, ext: String?, firstDuplicate: Int) -> String {
@@ -313,9 +540,6 @@ public struct FileOps {
         return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
     }
 
-    private func parentPath(_ url: URL) -> String {
-        stdPath(url.deletingLastPathComponent())
-    }
 
     private func stdPath(_ url: URL) -> String {
         url.standardizedFileURL.path

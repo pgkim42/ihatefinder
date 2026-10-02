@@ -13,7 +13,7 @@ make test
 make run
 ```
 
-`make test` runs the file-operation tests in a temporary folder. `make run` builds `IHateFinder.app`, signs it for this Mac, and opens it.
+`make test` checks file operations, asynchronous browsing, session restoration, and clipboard/selection behavior using isolated folders, preferences, and pasteboards. `make run` builds `IHateFinder.app`, signs it for this Mac, and opens it.
 
 The first time the app reads Desktop, Documents, or Downloads, macOS asks for access. Allow that access. Otherwise those folders stay closed.
 
@@ -29,6 +29,12 @@ Command-Shift-N creates a folder. Command-Option-N creates an empty text file. T
 
 Click **양쪽 창** to show a second list. Click a list to make that list the target of the keyboard. F5 copies the selection to the other list. F6 moves it.
 
+Copy files between Finder and IHateFinder using the system clipboard. Escape cancels local cut intent and leaves the files available as a copy. Completing an older move never clears a newer clipboard selection.
+
+Transfers show the current file, item count, and byte progress where available. **취소** stops an in-progress copy safely; already completed items stay completed. Partial results identify skipped, failed, cancelled, and unprocessed items, including recovery locations when needed.
+
+Folder reads run in the background and external changes refresh the list without shifting selection onto another file. The next launch restores both folder paths, sorting, hidden-file settings, and single/dual-pane mode. Unavailable saved folders fall back to Home, then the temporary folder, with an explanation.
+
 ## Not in this version
 
 This version has no tabs, no icon view, no column view, no folder search, no Quick Look, and no undo.
@@ -41,4 +47,4 @@ Run this from the repository root.
 swift build && .build/debug/IHateFinder --repro-focus
 ```
 
-The process prints `copied=right-only.txt` and `pasteDest=right`, then exits. That line means a click on the right list makes copy, paste, Delete, and F6 use the right list.
+The process prints `copied=right-only.txt` and `pasteDest=right`, then exits. It checks the copy source and paste/Delete/F6 target state after giving the right table keyboard focus; it does not actually delete or move files. It uses an isolated clipboard and does not save its temporary browsing session.

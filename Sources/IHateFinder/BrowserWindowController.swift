@@ -6,23 +6,32 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private let right: FilePaneController
     private let sidebar = NSTableView()
     private let status = NSTextField(labelWithString: "")
-    private let paneSplit = NSSplitView()
+    private let transferProgress = NSProgressIndicator()
+    private let cancelTransferButton = NSButton(title: "취소", target: nil, action: nil)
+    private let paneSplitController = NSSplitViewController()
+    private let outerSplitController = NSSplitViewController()
+    private var paneSplit: NSSplitView {
+        _ = paneSplitController.view
+        return paneSplitController.splitView
+    }
     private var places: [SidebarItem] = []
     private var focused: FilePaneController
     private var dual = false
     private var busy = false
-    private var held: Held?
+    private let clipboard: FileClipboard
+    private let workspaceStore: WorkspaceStore?
+    private var transferCancellation: FileTransferCancellation?
     private var rememberedChoice: NameConflict?
     private var keyMonitor: Any?
 
-    private struct Held {
-        var urls: [URL]
-        var cut: Bool
-    }
 
-    init() {
-        let leftSession = Self.makeSession()
-        let rightSession = Self.makeSession()
+    init(workspaceStore: WorkspaceStore? = WorkspaceStore(), pasteboard: NSPasteboard = .general) {
+        self.workspaceStore = workspaceStore
+        clipboard = FileClipboard(pasteboard: pasteboard)
+        let saved = workspaceStore?.load()
+        let leftSession = saved.map { BrowserSession(restoring: $0.left) } ?? Self.makeSession()
+        let rightSession = saved.map { BrowserSession(restoring: $0.right) } ?? Self.makeSession()
+        dual = saved?.dual ?? false
         left = FilePaneController(session: leftSession)
         right = FilePaneController(session: rightSession)
         focused = left
@@ -55,6 +64,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             name: NSWorkspace.didUnmountNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncClipboard),
+            name: NSApplication.didBecomeActiveNotification, object: nil
+        )
     }
 
     @available(*, unavailable)
@@ -69,6 +82,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func updateStatus() {
+        saveWorkspace()
         guard !busy else { return }
         status.stringValue = focused.summary()
         window?.title = focused.session.url.lastPathComponent
@@ -81,20 +95,50 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         updateStatus()
     }
 
+    var isFileOperationRunning: Bool { busy }
+
+    func saveWorkspace() {
+        workspaceStore?.save(left: left.session, right: right.session, dual: dual)
+    }
+
+    func canClose() -> Bool {
+        guard !busy else {
+            alert("파일 작업이 진행 중입니다. 작업을 완료하거나 취소한 뒤 닫으십시오.")
+            return false
+        }
+        saveWorkspace()
+        return true
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        canClose()
+    }
+
+    @objc private func syncClipboard() {
+        if clipboard.synchronize() { reloadTables() }
+    }
+
     func runFocusRepro() -> String {
         toggleDual()
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("ihatefinder-focus-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: root) }
         let leftDir = root.appendingPathComponent("left", isDirectory: true)
         let rightDir = root.appendingPathComponent("right", isDirectory: true)
         try? fm.createDirectory(at: leftDir, withIntermediateDirectories: true)
         try? fm.createDirectory(at: rightDir, withIntermediateDirectories: true)
         fm.createFile(atPath: leftDir.appendingPathComponent("left-only.txt").path, contents: Data("L".utf8))
         fm.createFile(atPath: rightDir.appendingPathComponent("right-only.txt").path, contents: Data("R".utf8))
-        _ = left.session.navigate(to: leftDir)
-        _ = right.session.navigate(to: rightDir)
-        left.show()
-        right.show()
+        left.session.navigate(to: leftDir)
+        right.session.navigate(to: rightDir)
+        let deadline = Date().addingTimeInterval(10)
+        while (left.session.isLoading || right.session.isLoading), Date() < deadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        }
+        guard left.session.url == leftDir, right.session.url == rightDir,
+              !left.session.isLoading, !right.session.isLoading else {
+            return "focusReproFailed=directoryLoad"
+        }
         left.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         right.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         window?.makeFirstResponder(right.table)
@@ -102,7 +146,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let deleteFires = focused.tableIsResponder
         let keyTarget = focused.selectedURLs().first?.lastPathComponent ?? "none"
         copy(nil)
-        let copied = held?.urls.first?.lastPathComponent ?? "none"
+        let copied = clipboard.snapshot()?.urls.first?.lastPathComponent ?? "none"
         let pasteDest = focused.session.url.lastPathComponent
         return [
             "firstResponderRight=\(rightIsResponder)",
@@ -126,9 +170,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func isCut(_ url: URL) -> Bool {
-        guard let held, held.cut else { return false }
-        let path = url.standardizedFileURL.path
-        return held.urls.contains { $0.standardizedFileURL.path == path }
+        clipboard.isCut(url)
     }
 
     func resolveConflict(_ name: String) -> NameConflict {
@@ -139,10 +181,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func run(_ failure: String, after: (() -> Void)? = nil, work: @escaping () throws -> Void) {
-        guard !busy else { return }
+        guard !busy else {
+            alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
+            return
+        }
         busy = true
         rememberedChoice = nil
-        status.stringValue = "옮기는 중…"
+        status.stringValue = "파일 작업 중…"
         DispatchQueue.global(qos: .userInitiated).async {
             var message: String?
             do {
@@ -164,16 +209,120 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func drop(_ urls: [URL], onto dest: URL, copying: Bool) {
-        run(copying ? "복사하지 못했습니다." : "옮기지 못했습니다.", after: {
-            if !copying { self.forget(urls) }
-        }) {
-            try self.left.session.ops.transfer(
-                urls: urls,
-                to: dest,
-                moving: !copying,
-                resolve: self.resolveConflict
-            )
+        runTransfer(urls: urls, to: dest, moving: !copying)
+    }
+
+    private func runTransfer(urls: [URL], to destination: URL, moving: Bool, pasting: Bool = false, clipboardSnapshot: FileClipboard.Snapshot? = nil) {
+        guard !busy else {
+            alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
+            return
         }
+        let ops = focused.session.ops
+        let snapshot = clipboardSnapshot ?? clipboard.snapshot()
+        let cancellation = FileTransferCancellation()
+        transferCancellation = cancellation
+        busy = true
+        rememberedChoice = nil
+        status.stringValue = moving ? "옮기는 중…" : "복사하는 중…"
+        transferProgress.isHidden = false
+        transferProgress.isIndeterminate = true
+        transferProgress.startAnimation(nil)
+        cancelTransferButton.isHidden = false
+        cancelTransferButton.isEnabled = true
+        let progress: (FileTransferProgress) -> Void = { [weak self] progress in
+            DispatchQueue.main.async {
+                guard let self, self.transferCancellation === cancellation else { return }
+                self.updateTransferProgress(progress, cancellation: cancellation)
+            }
+        }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let report: FileTransferReport
+            if pasting {
+                report = ops.paste(urls: urls, cut: moving, into: destination, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
+            } else {
+                report = ops.transfer(urls: urls, to: destination, moving: moving, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
+            }
+            DispatchQueue.main.async {
+                self.busy = false
+                self.transferCancellation = nil
+                self.transferProgress.stopAnimation(nil)
+                self.transferProgress.isHidden = true
+                self.cancelTransferButton.isHidden = true
+                if moving, let snapshot {
+                    self.clipboard.consume(report.completedSources, from: snapshot)
+                }
+                self.reloadPanes()
+                self.showTransferResult(report)
+            }
+        }
+    }
+
+    @objc private func cancelTransfer() {
+        transferCancellation?.cancel()
+        cancelTransferButton.isEnabled = false
+        status.stringValue = "취소하는 중… 완료된 항목은 유지합니다."
+    }
+
+    private func updateTransferProgress(_ progress: FileTransferProgress, cancellation: FileTransferCancellation) {
+        guard !cancellation.isCancelled else { return }
+        let operation = progress.operation == .move ? "이동" : "복사"
+        let phase: String
+        switch progress.phase {
+        case .preparing: phase = "준비"
+        case .copying: phase = "전송"
+        case .committing: phase = "확정"
+        case .finished: phase = "처리 완료"
+        }
+        var detail = "\(operation) · \(phase) · 완료 \(progress.processedItems)/\(progress.totalItems) · \(progress.currentFile.lastPathComponent)"
+        if let total = progress.totalBytes, total > 0, progress.phase == .copying {
+            transferProgress.stopAnimation(nil)
+            transferProgress.isIndeterminate = false
+            transferProgress.doubleValue = min(1, Double(progress.bytesCopied) / Double(total))
+            detail += " · \(ByteCountFormatter.string(fromByteCount: progress.bytesCopied, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+        } else {
+            transferProgress.isIndeterminate = true
+            transferProgress.startAnimation(nil)
+        }
+        status.stringValue = detail
+        status.toolTip = progress.currentFile.path
+    }
+
+    private func showTransferResult(_ report: FileTransferReport) {
+        guard report.items.contains(where: { $0.status != .completed || $0.message != nil || $0.recovery != nil }) else { return }
+        let details = report.items.map { item -> String in
+            let state: String
+            switch item.status {
+            case .completed: state = "완료"
+            case .skipped: state = "건너뜀"
+            case .failed: state = "실패"
+            case .unprocessed: state = "미처리"
+            case .cancelled: state = "취소"
+            }
+            var lines = ["[\(state)] \(item.source.path)", "대상: \(item.destination.path)"]
+            if let message = item.message { lines.append(message) }
+            if let recovery = item.recovery {
+                lines.append(recovery.message)
+                lines.append(contentsOf: recovery.locations.map(\.path))
+            }
+            return lines.joined(separator: "\n")
+        }.joined(separator: "\n\n")
+        let result = NSAlert()
+        result.messageText = "파일 작업 결과"
+        result.informativeText = "완료 \(report.items.filter { $0.status == .completed }.count) · 건너뜀 \(report.items.filter { $0.status == .skipped }.count) · 실패 \(report.items.filter { $0.status == .failed }.count) · 취소 \(report.items.filter { $0.status == .cancelled }.count) · 미처리 \(report.items.filter { $0.status == .unprocessed }.count)"
+        result.addButton(withTitle: "확인")
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 560, height: 260))
+        scroll.hasVerticalScroller = true
+        let text = NSTextView(frame: scroll.bounds)
+        text.isEditable = false
+        text.isSelectable = true
+        text.font = .systemFont(ofSize: 12)
+        text.string = details
+        text.isVerticallyResizable = true
+        text.autoresizingMask = [.width]
+        text.textContainer?.widthTracksTextView = true
+        scroll.documentView = text
+        result.accessoryView = scroll
+        if let window { result.beginSheetModal(for: window) }
     }
 
     @objc func makeFolder() { focused.makeFolder() }
@@ -184,32 +333,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc func cut(_ sender: Any?) {
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
-        held = Held(urls: urls, cut: true)
+        guard clipboard.cut(urls) else { alert("클립보드에 파일을 기록하지 못했습니다."); return }
         reloadTables()
     }
 
     @objc func copy(_ sender: Any?) {
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
-        held = Held(urls: urls, cut: false)
+        guard clipboard.copy(urls) else { alert("클립보드에 파일을 기록하지 못했습니다."); return }
         reloadTables()
     }
 
     @objc func paste(_ sender: Any?) {
-        guard let held else { return }
-        let urls = held.urls
-        let cut = held.cut
-        let dest = focused.session.url
-        run(cut ? "옮기지 못했습니다." : "복사하지 못했습니다.", after: {
-            if cut { self.held = nil }
-        }) {
-            try self.focused.session.ops.paste(
-                urls: urls,
-                cut: cut,
-                into: dest,
-                resolve: self.resolveConflict
-            )
-        }
+        guard let snapshot = clipboard.snapshot() else { return }
+        runTransfer(urls: snapshot.urls, to: focused.session.url, moving: snapshot.isCut, pasting: true, clipboardSnapshot: snapshot)
     }
 
     @objc func goBackAction() { focused.goBack() }
@@ -225,8 +362,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     @objc func toggleDual() {
         dual.toggle()
-        right.view.isHidden = !dual
-        paneSplit.adjustSubviews()
+        paneSplitController.splitViewItems[1].isCollapsed = !dual
+        window?.contentView?.layoutSubtreeIfNeeded()
+        if dual { paneSplit.setPosition(paneSplit.bounds.width / 2, ofDividerAt: 0) }
         if !dual, focused === right {
             focused = left
             window?.makeFirstResponder(left.table)
@@ -259,8 +397,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         sidebar.action = #selector(openPlace)
         sidebar.style = .sourceList
         sidebar.floatsGroupRows = true
+        sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("place"))
         column.title = ""
+        column.width = 180
+        column.minWidth = 140
         sidebar.addTableColumn(column)
         let sidebarScroll = NSScrollView()
         sidebarScroll.documentView = sidebar
@@ -269,21 +410,50 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         paneSplit.isVertical = true
         paneSplit.dividerStyle = .thin
-        paneSplit.addArrangedSubview(left.view)
-        paneSplit.addArrangedSubview(right.view)
-        right.view.isHidden = true
+        let leftItem = NSSplitViewItem(viewController: left)
+        leftItem.minimumThickness = 260
+        let rightItem = NSSplitViewItem(viewController: right)
+        rightItem.minimumThickness = 260
+        rightItem.canCollapse = true
+        rightItem.isCollapsed = !dual
+        paneSplitController.addSplitViewItem(leftItem)
+        paneSplitController.addSplitViewItem(rightItem)
 
-        let outer = NSSplitView()
+        let sidebarController = NSViewController()
+        sidebarController.view = sidebarScroll
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        sidebarItem.minimumThickness = 160
+        sidebarItem.maximumThickness = 240
+        sidebarItem.canCollapse = false
+        sidebarItem.holdingPriority = .defaultHigh
+        let panesItem = NSSplitViewItem(viewController: paneSplitController)
+        panesItem.minimumThickness = 260
+        outerSplitController.addSplitViewItem(sidebarItem)
+        outerSplitController.addSplitViewItem(panesItem)
+        _ = outerSplitController.view
+        let outer = outerSplitController.splitView
         outer.isVertical = true
         outer.dividerStyle = .thin
-        outer.addArrangedSubview(sidebarScroll)
-        outer.addArrangedSubview(paneSplit)
 
         status.font = .systemFont(ofSize: 12)
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingTail
+        transferProgress.style = .bar
+        transferProgress.minValue = 0
+        transferProgress.maxValue = 1
+        transferProgress.isHidden = true
+        transferProgress.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        cancelTransferButton.target = self
+        cancelTransferButton.action = #selector(cancelTransfer)
+        cancelTransferButton.bezelStyle = .rounded
+        cancelTransferButton.isHidden = true
+        let footer = NSStackView(views: [status, transferProgress, cancelTransferButton])
+        footer.orientation = .horizontal
+        footer.spacing = 8
+        status.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for item in [buttons, outer, status] {
+        for item in [buttons, outer, footer] {
             item.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(item)
         }
@@ -293,11 +463,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             outer.topAnchor.constraint(equalTo: buttons.bottomAnchor, constant: 8),
             outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            status.topAnchor.constraint(equalTo: outer.bottomAnchor, constant: 6),
-            status.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
-            status.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
-            status.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
-            sidebarScroll.widthAnchor.constraint(greaterThanOrEqualToConstant: 160),
+            footer.topAnchor.constraint(equalTo: outer.bottomAnchor, constant: 6),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
+            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
+            buttons.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -8),
         ])
         window.contentView = content
         refreshPlaces()
@@ -305,12 +475,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window?.makeFirstResponder(self.left.table)
+            self.window?.contentView?.layoutSubtreeIfNeeded()
             self.outerPosition(outer)
         }
     }
 
     private func outerPosition(_ outer: NSSplitView) {
         outer.setPosition(180, ofDividerAt: 0)
+        if dual { paneSplit.setPosition(paneSplit.bounds.width / 2, ofDividerAt: 0) }
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
@@ -403,9 +575,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         let dest = other().session.url
-        run("복사하지 못했습니다.") {
-            try self.left.session.ops.transfer(urls: urls, to: dest, moving: false, resolve: self.resolveConflict)
-        }
+        runTransfer(urls: urls, to: dest, moving: false)
     }
 
     private func moveToOther() {
@@ -413,11 +583,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         let dest = other().session.url
-        run("옮기지 못했습니다.", after: {
-            self.forget(urls)
-        }) {
-            try self.left.session.ops.transfer(urls: urls, to: dest, moving: true, resolve: self.resolveConflict)
-        }
+        runTransfer(urls: urls, to: dest, moving: true)
     }
 
     private func other() -> FilePaneController {
@@ -425,24 +591,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func clearCut() -> Bool {
-        guard held?.cut == true else { return false }
-        held = nil
+        guard clipboard.cancelCut() else { return false }
         reloadTables()
         return true
     }
 
-    private func forget(_ urls: [URL]) {
-        guard let held else { return }
-        let gone = Set(urls.map { $0.standardizedFileURL.path })
-        let remaining = held.urls.filter { !gone.contains($0.standardizedFileURL.path) }
-        self.held = remaining.isEmpty ? nil : Held(urls: remaining, cut: held.cut)
-    }
 
     private func reloadPanes() {
-        try? left.session.reload()
-        try? right.session.reload()
-        left.show()
-        right.show()
+        left.session.reload()
+        right.session.reload()
         updateStatus()
     }
 
@@ -558,8 +715,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     private static func makeSession() -> BrowserSession {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        if let session = try? BrowserSession(url: home) { return session }
-        return try! BrowserSession(url: FileManager.default.temporaryDirectory)
+        return BrowserSession(url: home)
     }
 
     private static func loadPlaces() -> [SidebarItem] {

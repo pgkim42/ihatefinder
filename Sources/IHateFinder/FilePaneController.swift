@@ -7,6 +7,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     let pathField = NSTextField()
     let table = FileTableView()
     private let scroll = NSScrollView()
+    private let loadStatus = NSTextField(labelWithString: "")
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -19,10 +20,16 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         return formatter
     }()
     private var editingRow = -1
+    private var editingSelection: Set<URL>?
+    private var displayedEntries: [FileEntry] = []
+    private var displayedURL: URL
+    private var displayedRevision = -1
 
     init(session: BrowserSession) {
         self.session = session
+        self.displayedURL = session.url
         super.init(nibName: nil, bundle: nil)
+        session.onChange = { [weak self] in self?.show() }
     }
 
     @available(*, unavailable)
@@ -67,22 +74,26 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
             tableColumn.title = column.title
             tableColumn.width = column.width
-            tableColumn.minWidth = 60
+            tableColumn.minWidth = column.rawValue == SortColumn.name.rawValue ? 180 : 60
             tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true)
             table.addTableColumn(tableColumn)
         }
-        table.sortDescriptors = [NSSortDescriptor(key: SortColumn.name.rawValue, ascending: true)]
+        table.sortDescriptors = [NSSortDescriptor(key: session.sortColumn.rawValue, ascending: session.ascending)]
 
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
         scroll.borderType = .bezelBorder
+        loadStatus.font = .systemFont(ofSize: 11)
+        loadStatus.lineBreakMode = .byTruncatingMiddle
+        loadStatus.translatesAutoresizingMaskIntoConstraints = false
 
         pathField.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(pathField)
         root.addSubview(scroll)
+        root.addSubview(loadStatus)
         NSLayoutConstraint.activate([
             pathField.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
             pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
@@ -90,15 +101,44 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             scroll.topAnchor.constraint(equalTo: pathField.bottomAnchor, constant: 8),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
-            scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
+            scroll.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -4),
+            loadStatus.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
+            loadStatus.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
+            loadStatus.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
         ])
         view = root
         show()
+        session.reload()
     }
 
     func show() {
-        pathField.stringValue = session.url.path
-        table.reloadData()
+        guard isViewLoaded else { return }
+        if case .failed = session.loadState {
+            loadStatus.textColor = .systemRed
+        } else {
+            loadStatus.textColor = .secondaryLabelColor
+        }
+        if editingRow < 0 && table.editedRow < 0 {
+            let selection = editingSelection ?? Set(selectedURLs())
+            editingSelection = nil
+            let sameDirectory = displayedURL == session.url
+            if displayedRevision != session.revision {
+                table.cancelPendingRename()
+            }
+            displayedEntries = session.entries
+            displayedURL = session.url
+            displayedRevision = session.revision
+            table.reloadData()
+            let indexes = IndexSet(displayedEntries.indices.filter {
+                sameDirectory && selection.contains(displayedEntries[$0].url)
+            })
+            table.selectRowIndexes(indexes, byExtendingSelection: false)
+        }
+        if pathField.currentEditor() == nil {
+            pathField.stringValue = displayedURL.path
+        }
+        loadStatus.stringValue = summary()
+        loadStatus.toolTip = loadStatus.stringValue
         browser?.updateStatus()
     }
 
@@ -108,14 +148,20 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     func selectedURLs() -> [URL] {
         table.selectedRowIndexes.compactMap { index in
-            session.entries.indices.contains(index) ? session.entries[index].url : nil
+            displayedEntries.indices.contains(index) ? displayedEntries[index].url : nil
         }
     }
 
     func summary() -> String {
-        let count = session.entries.count
+        switch session.loadState {
+        case .loading(let url): return "불러오는 중… \(url.path)"
+        case .failed(let url, let message): return "\(url.path): \(message)"
+        case .idle: break
+        }
+        if let notice = session.restorationNotice { return notice }
+        let count = displayedEntries.count
         let selected = table.selectedRowIndexes.compactMap { index -> FileEntry? in
-            session.entries.indices.contains(index) ? session.entries[index] : nil
+            displayedEntries.indices.contains(index) ? displayedEntries[index] : nil
         }
         guard !selected.isEmpty else { return "\(count)개 항목" }
         let bytes = selected.reduce(Int64(0)) { partial, entry in
@@ -135,83 +181,82 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     func goUp() {
         table.cancelPendingRename()
-        guard session.goUp() else {
-            browser?.alert("위 폴더로 갈 수 없습니다.")
-            return
-        }
-        show()
+        _ = session.goUp()
     }
 
     func goBack() {
         table.cancelPendingRename()
-        guard session.goBack() else { return }
-        show()
+        _ = session.goBack()
     }
 
     func goForward() {
         table.cancelPendingRename()
-        guard session.goForward() else { return }
-        show()
+        _ = session.goForward()
     }
 
     func navigateSidebar(_ url: URL) {
         table.cancelPendingRename()
-        if session.navigate(to: url) {
-            show()
-        } else {
-            browser?.alert("이 폴더를 열 수 없습니다.")
-        }
+        session.navigate(to: url)
     }
 
     @objc func openSelection() {
         table.cancelPendingRename()
         guard let entry = selectedEntry else { return }
         if entry.isDirectory {
-            if session.navigate(to: entry.url) {
-                show()
-            } else {
-                browser?.alert("이 폴더를 열 수 없습니다.")
-            }
+            session.navigate(to: entry.url)
         } else {
             NSWorkspace.shared.open(entry.url)
         }
     }
 
     @objc func beginRename() {
+        guard browser?.isFileOperationRunning != true else {
+            browser?.alert("파일 작업이 진행 중입니다. 완료한 뒤 이름을 바꾸십시오.")
+            return
+        }
         let row = table.selectedRow
-        guard session.entries.indices.contains(row) else { return }
+        guard displayedEntries.indices.contains(row) else { return }
         editingRow = row
+        editingSelection = Set(selectedURLs())
         table.editColumn(0, row: row, with: nil, select: true)
     }
 
     @objc func makeFolder() {
-        let directory = session.url
+        let directory = displayedURL
+        let ops = session.ops
         browser?.run("폴더를 만들지 못했습니다.") {
-            _ = try self.session.ops.createFolder(in: directory)
+            _ = try ops.createFolder(in: directory)
         }
     }
 
     @objc func makeTextFile() {
-        let directory = session.url
+        let directory = displayedURL
+        let ops = session.ops
         browser?.run("파일을 만들지 못했습니다.") {
-            _ = try self.session.ops.createTextFile(in: directory)
+            _ = try ops.createTextFile(in: directory)
         }
     }
 
     @objc func trashSelection() {
         let urls = selectedURLs()
         guard !urls.isEmpty else { return }
+        let ops = session.ops
         browser?.run("휴지통으로 보내지 못했습니다.") {
             for url in urls {
-                try self.session.ops.trash(url)
+                try ops.trash(url)
             }
         }
     }
 
     func controlTextDidBeginEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField, field === pathField else { return }
-        browser?.focus(self)
-        field.currentEditor()?.selectAll(nil)
+        guard let field = obj.object as? NSTextField else { return }
+        if field === pathField {
+            browser?.focus(self)
+            field.currentEditor()?.selectAll(nil)
+        } else {
+            editingRow = table.row(for: field)
+            if editingSelection == nil { editingSelection = Set(selectedURLs()) }
+        }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -225,33 +270,38 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
-        guard let field = obj.object as? NSTextField, field !== pathField else { return }
-        let row = editingRow
-        editingRow = -1
-        guard session.entries.indices.contains(row) else { return }
-        let movement = obj.userInfo?["NSTextMovement"] as? Int
-        if movement == NSTextMovement.cancel.rawValue {
-            show()
+        guard let field = obj.object as? NSTextField else { return }
+        if field === pathField {
+            DispatchQueue.main.async { [weak self] in self?.show() }
             return
         }
-        let entry = session.entries[row]
+        let row = editingRow
+        editingRow = -1
+        defer { DispatchQueue.main.async { [weak self] in self?.show() } }
+        guard displayedEntries.indices.contains(row) else { return }
+        let movement = obj.userInfo?["NSTextMovement"] as? Int
+        if movement == NSTextMovement.cancel.rawValue {
+            return
+        }
+        let entry = displayedEntries[row]
         let newName = field.stringValue
         guard newName != entry.name else { return }
         let url = entry.url
+        let ops = session.ops
         browser?.run("이름을 바꾸지 못했습니다.") {
-            try self.session.ops.rename(url: url, to: newName, resolve: { name in
+            try ops.rename(url: url, to: newName, resolve: { name in
                 self.browser?.resolveConflict(name) ?? .skip
             })
         }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        session.entries.count
+        displayedEntries.count
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        guard let tableColumn, session.entries.indices.contains(row) else { return nil }
-        let entry = session.entries[row]
+        guard let tableColumn, displayedEntries.indices.contains(row) else { return nil }
+        let entry = displayedEntries[row]
         let cell = reusedCell(tableView, column: tableColumn)
         let column = SortColumn(rawValue: tableColumn.identifier.rawValue)
         switch column {
@@ -273,6 +323,8 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        loadStatus.stringValue = summary()
+        loadStatus.toolTip = loadStatus.stringValue
         browser?.updateStatus()
     }
 
@@ -280,15 +332,14 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         guard let descriptor = tableView.sortDescriptors.first,
               let column = SortColumn(rawValue: descriptor.key ?? "") else { return }
         session.setSort(column, ascending: descriptor.ascending)
-        tableView.reloadData()
     }
 
     func tableView(
         _ tableView: NSTableView,
         pasteboardWriterForRow row: Int
     ) -> NSPasteboardWriting? {
-        guard session.entries.indices.contains(row) else { return nil }
-        return session.entries[row].url as NSURL
+        guard displayedEntries.indices.contains(row) else { return nil }
+        return displayedEntries[row].url as NSURL
     }
 
     func tableView(
@@ -306,7 +357,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         proposedRow row: Int,
         proposedDropOperation dropOperation: NSTableView.DropOperation
     ) -> NSDragOperation {
-        if session.entries.indices.contains(row), session.entries[row].isDirectory {
+        if displayedEntries.indices.contains(row), displayedEntries[row].isDirectory {
             tableView.setDropRow(row, dropOperation: .on)
         } else {
             tableView.setDropRow(-1, dropOperation: .above)
@@ -323,9 +374,9 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     ) -> Bool {
         guard let urls = info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
               !urls.isEmpty else { return false }
-        var dest = session.url
-        if dropOperation == .on, session.entries.indices.contains(row), session.entries[row].isDirectory {
-            dest = session.entries[row].url
+        var dest = displayedURL
+        if dropOperation == .on, displayedEntries.indices.contains(row), displayedEntries[row].isDirectory {
+            dest = displayedEntries[row].url
         }
         let copying = NSApp.currentEvent?.modifierFlags.contains(.option) == true
         browser?.drop(urls, onto: dest, copying: copying)
@@ -341,19 +392,14 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     @objc private func commitPath() {
         let typed = pathField.stringValue
-        if session.navigate(to: URL(fileURLWithPath: (typed as NSString).expandingTildeInPath)) {
-            show()
-        } else {
-            browser?.alert("없는 경로입니다.")
-            pathField.stringValue = session.url.path
-        }
+        session.navigate(to: URL(fileURLWithPath: (typed as NSString).expandingTildeInPath))
         view.window?.makeFirstResponder(table)
     }
 
     private var selectedEntry: FileEntry? {
         let row = table.selectedRow
-        guard session.entries.indices.contains(row) else { return nil }
-        return session.entries[row]
+        guard displayedEntries.indices.contains(row) else { return nil }
+        return displayedEntries[row]
     }
 
     private func makeMenu() -> NSMenu {

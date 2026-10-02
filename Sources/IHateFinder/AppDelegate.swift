@@ -5,10 +5,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
-        let browser = BrowserWindowController()
+        let repro = CommandLine.arguments.contains("--repro-focus")
+        let browser = repro
+            ? BrowserWindowController(workspaceStore: nil, pasteboard: NSPasteboard(name: .init("IHateFinder.repro.\(UUID().uuidString)")))
+            : BrowserWindowController()
         self.browser = browser
         browser.showWindow(nil)
-        if CommandLine.arguments.contains("--repro-focus") {
+        if repro {
             let report = browser.runFocusRepro()
             FileHandle.standardOutput.write(Data(report.utf8))
             FileHandle.standardOutput.write(Data("\n".utf8))
@@ -19,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        browser?.canClose() == false ? .terminateCancel : .terminateNow
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        browser?.saveWorkspace()
     }
 
     private func buildMenu() {
