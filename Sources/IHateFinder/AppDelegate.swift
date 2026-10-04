@@ -2,15 +2,57 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var browser: BrowserWindowController?
+    /// Requests that arrived before the window existed. Drained once after `showWindow`.
+    private(set) var pendingOpens: [OpenRequest] = []
+    private let isRepro = CommandLine.arguments.contains("--repro-focus")
+
+    /// Registered this early so a cold launch by "Show in Finder" is not lost.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleReveal(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kAEMiscStandards),
+            andEventID: AEEventID(kAEMakeObjectsVisible)
+        )
+    }
+
+    @objc func handleReveal(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        receive(urls: OpenRequest.urls(fromAppleEventDirectObject: event.paramDescriptor(forKeyword: keyDirectObject)))
+    }
+
+    /// Open-documents (odoc) arrives here.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        receive(urls: urls)
+    }
+
+    private func receive(urls: [URL]) {
+        guard !isRepro, let request = OpenRequest.make(urls: urls) else { return }
+        route(request)
+    }
+
+    func route(_ request: OpenRequest) {
+        if let browser {
+            browser.handleOpen(request)
+        } else {
+            pendingOpens.append(request)
+        }
+    }
+
+    func drainPendingOpens(into handle: (OpenRequest) -> Void) {
+        let queued = pendingOpens
+        pendingOpens = []
+        queued.forEach(handle)
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
-        let repro = CommandLine.arguments.contains("--repro-focus")
+        let repro = isRepro
         let browser = repro
             ? BrowserWindowController(workspaceStore: nil, pasteboard: NSPasteboard(name: .init("IHateFinder.repro.\(UUID().uuidString)")))
             : BrowserWindowController()
         self.browser = browser
         browser.showWindow(nil)
+        drainPendingOpens(into: browser.handleOpen)
         if repro {
             let report = browser.runFocusRepro()
             FileHandle.standardOutput.write(Data(report.utf8))
@@ -45,11 +87,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("새 텍스트 파일", #selector(BrowserWindowController.makeTextFile), "n", [.command, .option]),
         ]))
         main.addItem(menu("편집", [
+            item("실행 취소", Selector(("undo:")), "z", .command),
+            item("다시 실행", Selector(("redo:")), "z", [.command, .shift]),
+            .separator(),
             item("잘라두기", #selector(BrowserWindowController.cut(_:)), "x", .command),
             item("복사", #selector(BrowserWindowController.copy(_:)), "c", .command),
             item("붙여넣기", #selector(BrowserWindowController.paste(_:)), "v", .command),
             item("모두 선택", #selector(NSText.selectAll(_:)), "a", .command),
             item("이름 바꾸기", #selector(BrowserWindowController.beginRename), "", []),
+            item("찾기", #selector(BrowserWindowController.findInFolder), "f", .command),
         ]))
         main.addItem(menu("이동", [
             item("뒤로", #selector(BrowserWindowController.goBackAction), "[", .command),

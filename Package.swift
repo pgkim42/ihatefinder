@@ -16,7 +16,7 @@ let package = Package(
             name: "IHateFinder",
             dependencies: ["IHateFinderCore"],
             swiftSettings: [.swiftLanguageMode(.v5)],
-            linkerSettings: [.linkedFramework("AppKit")]
+            linkerSettings: [.linkedFramework("AppKit"), .linkedFramework("Quartz")]
         ),
         .testTarget(
             name: "IHateFinderCoreTests",

@@ -1,9 +1,10 @@
 import AppKit
+import Quartz
 import IHateFinderCore
 
 final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
-    private let left: FilePaneController
-    private let right: FilePaneController
+    let left: FilePaneController
+    let right: FilePaneController
     private let sidebar = NSTableView()
     private let status = NSTextField(labelWithString: "")
     private let transferProgress = NSProgressIndicator()
@@ -17,20 +18,42 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private var places: [SidebarItem] = []
     private var focused: FilePaneController
     private var dual = false
-    private var busy = false
+    var busy = false
     private let clipboard: FileClipboard
     private let workspaceStore: WorkspaceStore?
     private var transferCancellation: FileTransferCancellation?
     private var rememberedChoice: NameConflict?
+    let undoJournal = FileUndoJournal()
+    /// Set on the main thread before any alert, so tests can assert on the outcome.
+    private(set) var lastTrashReport: FileTrashReport?
+    private(set) var lastUndoReport: FileUndoReport?
+    private(set) var lastCompressResult: Result<URL, FileOpError>?
+    /// Test seam: the production runner is `ditto`.
+    var compressRunner: CompressRunner = FileOps.dittoRunner
     private var keyMonitor: Any?
 
 
-    init(workspaceStore: WorkspaceStore? = WorkspaceStore(), pasteboard: NSPasteboard = .general) {
+    /// `makeOps` and `initialURLs` are the test seam. Production uses the defaults, which
+    /// is the only place `cloneOnSameVolume` is switched on. With `initialURLs`, saved
+    /// state is ignored and both sessions start at those folders.
+    init(
+        workspaceStore: WorkspaceStore? = WorkspaceStore(),
+        pasteboard: NSPasteboard = .general,
+        makeOps: @escaping () -> FileOps = { FileOps(cloneOnSameVolume: true) },
+        initialURLs: (left: URL, right: URL)? = nil
+    ) {
         self.workspaceStore = workspaceStore
         clipboard = FileClipboard(pasteboard: pasteboard)
-        let saved = workspaceStore?.load()
-        let leftSession = saved.map { BrowserSession(restoring: $0.left) } ?? Self.makeSession()
-        let rightSession = saved.map { BrowserSession(restoring: $0.right) } ?? Self.makeSession()
+        let saved = initialURLs == nil ? workspaceStore?.load() : nil
+        let leftSession: BrowserSession
+        let rightSession: BrowserSession
+        if let initialURLs {
+            leftSession = BrowserSession(url: initialURLs.left, ops: makeOps())
+            rightSession = BrowserSession(url: initialURLs.right, ops: makeOps())
+        } else {
+            leftSession = saved.map { BrowserSession(restoring: $0.left, ops: makeOps()) } ?? Self.makeSession(ops: makeOps())
+            rightSession = saved.map { BrowserSession(restoring: $0.right, ops: makeOps()) } ?? Self.makeSession(ops: makeOps())
+        }
         dual = saved?.dual ?? false
         left = FilePaneController(session: leftSession)
         right = FilePaneController(session: rightSession)
@@ -92,6 +115,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     func focus(_ pane: FilePaneController) {
         focused = pane
+        if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible {
+            QLPreviewPanel.shared().updateController()
+        }
         updateStatus()
     }
 
@@ -148,6 +174,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         copy(nil)
         let copied = clipboard.snapshot()?.urls.first?.lastPathComponent ?? "none"
         let pasteDest = focused.session.url.lastPathComponent
+        let context = KeyContext(tableIsResponder: true, textIsResponder: false)
+        let backspace = KeyCommand.resolve(keyCode: 51, characters: "\u{7f}", flags: [], context: context)
+        let forwardDelete = KeyCommand.resolve(keyCode: 117, characters: "\u{f728}", flags: [.function], context: context)
         return [
             "firstResponderRight=\(rightIsResponder)",
             "copied=\(copied)",
@@ -155,6 +184,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             "deleteFires=\(deleteFires)",
             "deleteTarget=\(keyTarget)",
             "f6Source=\(keyTarget)",
+            "backspace=\(backspace == .goBack ? "goBack" : "other")",
+            "forwardDelete=\(forwardDelete == .trash ? "trash" : "other")",
         ].joined(separator: "\n")
     }
 
@@ -169,6 +200,31 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         }
     }
 
+    /// Shows what another app asked for in the focused pane. Navigation and selection only.
+    func handleOpen(_ request: OpenRequest) {
+        if window?.isMiniaturized == true { window?.deminiaturize(nil) }
+        showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        switch request {
+        case .failure(let message):
+            alert(message)
+        case .showFolder(let url):
+            focused.navigateSidebar(url)
+            window?.makeFirstResponder(focused.table)
+        case .reveal(let parent, let item):
+            focused.navigateSidebar(parent)
+            focused.revealAfterReload(item, rename: false)
+            window?.makeFirstResponder(focused.table)
+        }
+    }
+
+    /// Replaces the clipboard with the paths as text; ends any cut intent.
+    func copyPaths(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        if !clipboard.writeText(MenuState.pathText(urls)) { alert("클립보드에 경로를 기록하지 못했습니다.") }
+        reloadTables()
+    }
+
     func isCut(_ url: URL) -> Bool {
         clipboard.isCut(url)
     }
@@ -180,36 +236,82 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return DispatchQueue.main.sync { self.askConflict(name) }
     }
 
-    func run(_ failure: String, after: (() -> Void)? = nil, work: @escaping () throws -> Void) {
+    func failureMessage(_ error: Error, _ failure: String) -> String {
+        (error as? FileOpError)?.message ?? "\(failure) \(error.localizedDescription)"
+    }
+
+    /// Runs `work` off the main thread while the browser is busy. A successful or partially
+    /// failed run delivers its value to `completion` on main before the panes reload; an
+    /// error shows an alert after the reload. Returns false when another operation is running.
+    @discardableResult
+    func runReporting<T>(_ failure: String, work: @escaping () throws -> T, completion: @escaping (T) -> Void) -> Bool {
         guard !busy else {
             alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
-            return
+            return false
         }
         busy = true
         rememberedChoice = nil
         status.stringValue = "파일 작업 중…"
         DispatchQueue.global(qos: .userInitiated).async {
-            var message: String?
-            do {
-                try work()
-            } catch let error as FileOpError {
-                message = error.message
-            } catch {
-                message = "\(failure) \(error.localizedDescription)"
-            }
+            let result = Result { try work() }
             DispatchQueue.main.async {
                 self.busy = false
-                if message == nil { after?() }
-                self.reloadPanes()
-                if let message {
-                    self.alert(message)
+                switch result {
+                case .success(let value):
+                    completion(value)
+                    self.reloadPanes()
+                case .failure(let error):
+                    self.reloadPanes()
+                    self.alert(self.failureMessage(error, failure))
                 }
             }
         }
+        return true
     }
 
-    func drop(_ urls: [URL], onto dest: URL, copying: Bool) {
-        runTransfer(urls: urls, to: dest, moving: !copying)
+    func run(_ failure: String, after: (() -> Void)? = nil, work: @escaping () throws -> Void) {
+        runReporting(failure, work: work, completion: { after?() })
+    }
+
+    func recordUndo(_ record: UndoRecord?) {
+        if let record { undoJournal.push(record) }
+    }
+
+    func finishTrash(_ report: FileTrashReport, record: UndoRecord?) {
+        lastTrashReport = report
+        recordUndo(record)
+        if let message = report.failureMessage { alert(message) }
+    }
+
+    /// Undoes the last file operation. Refused (no pop) while another operation runs.
+    @objc func undoFileOperation() {
+        guard !busy else {
+            alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
+            return
+        }
+        guard let record = undoJournal.popLast() else { return }
+        let ops = focused.session.ops
+        runReporting("되돌리지 못했습니다.", work: { ops.undo(record) }, completion: { [weak self] report in
+            guard let self else { return }
+            self.lastUndoReport = report
+            for url in report.restoredURLs {
+                let folder = url.deletingLastPathComponent().standardizedFileURL.path
+                for pane in [self.left, self.right] where pane.session.url.path == folder {
+                    pane.revealAfterReload(url, rename: false)
+                }
+            }
+            let skipped = report.skipped
+            let partial = report.partial
+            if !skipped.isEmpty || !partial.isEmpty {
+                let lines = (partial + skipped).compactMap(\.message).joined(separator: "\n")
+                let partialText = partial.isEmpty ? "" : ", 일부만 되돌린 항목 \(partial.count)개"
+                self.alert("실행 취소(\(report.title)): 되돌린 항목 \(report.undone.count)개\(partialText), 건너뛴 항목 \(skipped.count)개.\n\(lines)")
+            }
+        })
+    }
+
+    func drop(_ urls: [URL], onto dest: URL, moving: Bool) {
+        runTransfer(urls: urls, to: dest, moving: moving)
     }
 
     private func runTransfer(urls: [URL], to destination: URL, moving: Bool, pasting: Bool = false, clipboardSnapshot: FileClipboard.Snapshot? = nil) {
@@ -219,16 +321,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         }
         let ops = focused.session.ops
         let snapshot = clipboardSnapshot ?? clipboard.snapshot()
-        let cancellation = FileTransferCancellation()
-        transferCancellation = cancellation
-        busy = true
-        rememberedChoice = nil
-        status.stringValue = moving ? "옮기는 중…" : "복사하는 중…"
-        transferProgress.isHidden = false
-        transferProgress.isIndeterminate = true
-        transferProgress.startAnimation(nil)
-        cancelTransferButton.isHidden = false
-        cancelTransferButton.isEnabled = true
+        let cancellation = beginCancellableJob(status: moving ? "옮기는 중…" : "복사하는 중…")
         let progress: (FileTransferProgress) -> Void = { [weak self] progress in
             DispatchQueue.main.async {
                 guard let self, self.transferCancellation === cancellation else { return }
@@ -237,22 +330,76 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         }
         DispatchQueue.global(qos: .userInitiated).async {
             let report: FileTransferReport
+            let record: UndoRecord?
             if pasting {
                 report = ops.paste(urls: urls, cut: moving, into: destination, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
             } else {
                 report = ops.transfer(urls: urls, to: destination, moving: moving, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
             }
+            record = ops.undoRecord(transfer: report, moving: moving)
             DispatchQueue.main.async {
-                self.busy = false
-                self.transferCancellation = nil
-                self.transferProgress.stopAnimation(nil)
-                self.transferProgress.isHidden = true
-                self.cancelTransferButton.isHidden = true
+                self.endCancellableJob()
+                self.recordUndo(record)
                 if moving, let snapshot {
                     self.clipboard.consume(report.completedSources, from: snapshot)
                 }
                 self.reloadPanes()
                 self.showTransferResult(report)
+            }
+        }
+    }
+
+    /// Marks the browser busy and shows the progress bar with the 취소 button. Main thread only.
+    private func beginCancellableJob(status text: String) -> FileTransferCancellation {
+        let cancellation = FileTransferCancellation()
+        transferCancellation = cancellation
+        busy = true
+        rememberedChoice = nil
+        status.stringValue = text
+        transferProgress.isHidden = false
+        transferProgress.isIndeterminate = true
+        transferProgress.startAnimation(nil)
+        cancelTransferButton.isHidden = false
+        cancelTransferButton.isEnabled = true
+        return cancellation
+    }
+
+    private func endCancellableJob() {
+        busy = false
+        transferCancellation = nil
+        transferProgress.stopAnimation(nil)
+        transferProgress.isHidden = true
+        cancelTransferButton.isHidden = true
+    }
+
+    /// Zips one item next to itself. Cancellable; the undo record trashes the zip.
+    func compress(_ url: URL) {
+        guard !busy else {
+            alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
+            return
+        }
+        let ops = focused.session.ops
+        let runner = compressRunner
+        let cancellation = beginCancellableJob(status: "압축하는 중… \(url.lastPathComponent)")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = ops.compress(url, cancellation: cancellation, runner: runner)
+            let record: UndoRecord?
+            if case .success(let zip) = result { record = ops.undoRecord(compressed: zip) } else { record = nil }
+            DispatchQueue.main.async {
+                self.endCancellableJob()
+                self.recordUndo(record)
+                self.lastCompressResult = result
+                switch result {
+                case .success(let zip):
+                    let folder = zip.deletingLastPathComponent().standardizedFileURL.path
+                    for pane in [self.left, self.right] where pane.session.url.path == folder {
+                        pane.revealAfterReload(zip, rename: false)
+                    }
+                    self.reloadPanes()
+                case .failure(let error):
+                    self.reloadPanes()
+                    if error != .compressCancelled { self.alert(error.message) }
+                }
             }
         }
     }
@@ -329,6 +476,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc func makeTextFile() { focused.makeTextFile() }
     @objc func trashSelection() { focused.trashSelection() }
     @objc func beginRename() { focused.beginRename() }
+    @objc func findInFolder() { focused.showFilter() }
 
     @objc func cut(_ sender: Any?) {
         let urls = focused.selectedURLs()
@@ -487,87 +635,44 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard event.window === window else { return event }
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let command = flags.contains(.command)
-        let control = flags.contains(.control)
-        let option = flags.contains(.option)
-        let shift = flags.contains(.shift)
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        if (command || control) && !option && !shift && key == "l" {
-            focused.focusPath()
-            return nil
-        }
-        if window?.firstResponder is NSTextView { return event }
+        guard let command = KeyCommand.resolve(
+            keyCode: event.keyCode,
+            characters: event.charactersIgnoringModifiers ?? "",
+            flags: event.modifierFlags,
+            context: keyContext()
+        ) else { return event }
+        return perform(command) ? nil : event
+    }
 
-        if control && !command && !option {
-            switch key {
-            case "c":
-                copy(nil)
-                return nil
-            case "x":
-                cut(nil)
-                return nil
-            case "v":
-                paste(nil)
-                return nil
-            case "a":
-                focused.table.selectAll(nil)
-                return nil
-            case "n" where shift:
-                focused.makeFolder()
-                return nil
-            default:
-                break
-            }
+    private func keyContext() -> KeyContext {
+        KeyContext(tableIsResponder: focused.tableIsResponder, textIsResponder: window?.firstResponder is NSTextView)
+    }
+
+    /// Returns false when the key should still reach the responder chain.
+    private func perform(_ command: KeyCommand) -> Bool {
+        switch command {
+        case .focusPath: focused.focusPath()
+        case .find: focused.showFilter()
+        case .info: focused.showInfo()
+        case .send(let selector): NSApp.sendAction(selector, to: nil, from: nil)
+        case .copy: copy(nil)
+        case .cut: cut(nil)
+        case .paste: paste(nil)
+        case .selectAll: focused.table.selectAll(nil)
+        case .newFolder: focused.makeFolder()
+        case .newTextFile: focused.makeTextFile()
+        case .toggleHidden: toggleHidden()
+        case .goUp: focused.goUp()
+        case .goBack: focused.goBack()
+        case .goForward: focused.goForward()
+        case .copyToOther: copyToOther()
+        case .moveToOther: moveToOther()
+        case .rename: focused.beginRename()
+        case .clearCut: return clearCut()
+        case .trash: focused.trashSelection()
+        case .open: focused.openSelection()
         }
-        if control && option && !command && !shift && key == "n" {
-            focused.makeTextFile()
-            return nil
-        }
-        if control && shift && key == "." {
-            toggleHidden()
-            return nil
-        }
-        if option && event.keyCode == 126 {
-            focused.goUp()
-            return nil
-        }
-        if option && event.keyCode == 123 {
-            focused.goBack()
-            return nil
-        }
-        if option && event.keyCode == 124 {
-            focused.goForward()
-            return nil
-        }
-        if event.keyCode == 96 {
-            copyToOther()
-            return nil
-        }
-        if event.keyCode == 97 {
-            moveToOther()
-            return nil
-        }
-        if event.keyCode == 120, focused.tableIsResponder {
-            focused.beginRename()
-            return nil
-        }
-        if event.keyCode == 53, clearCut() {
-            return nil
-        }
-        if (event.keyCode == 51 || event.keyCode == 117), focused.tableIsResponder, !control, !option, !shift {
-            focused.trashSelection()
-            return nil
-        }
-        if event.keyCode == 36, focused.tableIsResponder, !command, !control, !option {
-            focused.openSelection()
-            return nil
-        }
-        if command && event.keyCode == 125, focused.tableIsResponder {
-            focused.openSelection()
-            return nil
-        }
-        return event
+        return true
     }
 
     private func copyToOther() {
@@ -713,9 +818,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return cell
     }
 
-    private static func makeSession() -> BrowserSession {
+    private static func makeSession(ops: FileOps) -> BrowserSession {
         let home = FileManager.default.homeDirectoryForCurrentUser
-        return BrowserSession(url: home)
+        return BrowserSession(url: home, ops: ops)
     }
 
     private static func loadPlaces() -> [SidebarItem] {

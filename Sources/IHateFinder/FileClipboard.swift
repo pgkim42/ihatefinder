@@ -29,6 +29,16 @@ final class FileClipboard {
         write(urls, cut: true)
     }
 
+    /// Replaces the clipboard with plain text (copy path). Any file copy and cut intent ends.
+    @discardableResult
+    func writeText(_ text: String) -> Bool {
+        cutSnapshot = nil
+        pasteboard.clearContents()
+        let written = pasteboard.setString(text, forType: .string)
+        observedChangeCount = pasteboard.changeCount
+        return written
+    }
+
     /// Call on activation to refresh cut styling, and before using clipboard contents.
     @discardableResult
     func synchronize() -> Bool {
