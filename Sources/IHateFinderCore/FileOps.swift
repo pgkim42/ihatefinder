@@ -77,6 +77,61 @@ public struct FileTransferItemResult: Equatable {
     public let status: FileTransferStatus
     public let message: String?
     public let recovery: FileTransferRecovery?
+    /// True when an existing item at `destination` was moved aside and replaced.
+    public internal(set) var replacedExisting = false
+    /// Where the replaced item went in the Trash, when `moveToTrash` reported it.
+    public internal(set) var replacedTrashURL: URL? = nil
+    /// Where a cross-volume move's original went in the Trash, when `moveToTrash` reported it.
+    public internal(set) var sourceTrashURL: URL? = nil
+    /// Identity of the item at `destination`, read inside `write` the moment it was produced,
+    /// so a later item written to the same path in one batch cannot lend its identity.
+    public internal(set) var destinationID: FileID? = nil
+    /// True when `write` moved the source by renaming it on the destination volume
+    /// (so undo can move it back); false for copies and cross-volume moves.
+    public internal(set) var movedInPlace = false
+}
+
+/// What a rename actually did. `renamed` carries the real destination, which differs from
+/// the requested name when the user chose keep-both.
+public enum RenameOutcome: Equatable {
+    case renamed(FileTransferItemResult)
+    case skipped
+    case unchanged
+}
+
+public struct FileTrashItemResult: Equatable {
+    public enum Status: Equatable {
+        case trashed
+        case failed(String)
+        case unprocessed
+    }
+
+    public let original: URL
+    /// Where the item went in the Trash, when `moveToTrash` reported it.
+    public let trashedURL: URL?
+    public let status: Status
+    /// Best effort: the error says the volume has no Trash or cannot be written to.
+    public var trashUnsupported = false
+}
+
+public struct FileTrashReport: Equatable {
+    /// Input order is retained, including items not attempted after the first failure.
+    public let items: [FileTrashItemResult]
+
+    /// The user-facing text for the first failure, or nil when nothing failed.
+    /// Every failure gets the same wording; the trash-less-volume hint is only added when
+    /// the error code says so, and the message never depends on a code being recognised.
+    public var failureMessage: String? {
+        guard let failed = items.first(where: { if case .failed = $0.status { return true } else { return false } }),
+              case .failed(let reason) = failed.status else { return nil }
+        let trashed = items.filter { $0.status == .trashed }.count
+        var message = "‘\(failed.original.lastPathComponent)’을(를) 휴지통으로 보내지 못했습니다. 아무것도 지우지 않았습니다. (\(reason))"
+        if failed.trashUnsupported {
+            message += "\n이 디스크는 휴지통을 지원하지 않을 수 있습니다."
+        }
+        message += "\n휴지통으로 보낸 항목 \(trashed)개, 그대로 남은 항목 \(items.count - trashed)개."
+        return message
+    }
 }
 
 public struct FileTransferReport: Equatable {
@@ -92,19 +147,46 @@ public struct FileTransferReport: Equatable {
 
 public struct FileOps {
     public var sameVolume: (URL, URL) -> Bool
-    public var trash: (URL) throws -> Void
-    private let fm: FileManager
-    // Internal copy seam keeps fault-injected safety tests on the same staging path.
+    /// The single seam that sends an item to the Trash and reports its Trash URL
+    /// (nil when the seam cannot tell). Every Trash call goes through it: the
+    /// replace backup, the cross-volume move's source, and user trash.
+    public var moveToTrash: (URL) throws -> URL?
+    /// Same-volume copies use an APFS clone when true. Production opts in; the default is off.
+    public var cloneOnSameVolume: Bool
+    let fm: FileManager
+    // Internal copy seams keep fault-injected safety tests on the same staging path.
     var copy: FileCopyOperation = NativeFileCopy.copy
+    var cloneCopy: FileCopyOperation = NativeFileCopy.cloneCopy
+    /// Identity seam for undo records and checks. Returns nil when the item cannot be verified.
+    var fileIdentity: (URL) -> FileID? = { FileID.read(at: $0) }
+
+    /// `trash` adapts a closure that cannot report a Trash URL; without it the real Trash is used.
+    public init(
+        fileManager: FileManager = .default,
+        sameVolume: @escaping (URL, URL) -> Bool = FileOps.volumesMatch,
+        trash: ((URL) throws -> Void)? = nil,
+        cloneOnSameVolume: Bool = false
+    ) {
+        self.fm = fileManager
+        self.sameVolume = sameVolume
+        if let trash {
+            self.moveToTrash = { try trash($0); return nil }
+        } else {
+            self.moveToTrash = FileOps.trashItemRecording
+        }
+        self.cloneOnSameVolume = cloneOnSameVolume
+    }
 
     public init(
         fileManager: FileManager = .default,
         sameVolume: @escaping (URL, URL) -> Bool = FileOps.volumesMatch,
-        trash: @escaping (URL) throws -> Void = FileOps.trashItem
+        moveToTrash: @escaping (URL) throws -> URL?,
+        cloneOnSameVolume: Bool = false
     ) {
         self.fm = fileManager
         self.sameVolume = sameVolume
-        self.trash = trash
+        self.moveToTrash = moveToTrash
+        self.cloneOnSameVolume = cloneOnSameVolume
     }
 
     public func list(directory: URL, includeHidden: Bool) throws -> [FileEntry] {
@@ -223,18 +305,47 @@ public struct FileOps {
         return FileTransferReport(items: items)
     }
 
+    /// Sends each item to the Trash through `moveToTrash`, stopping at the first failure.
+    /// Never throws: the report keeps what was trashed so far.
+    public func trash(urls: [URL]) -> FileTrashReport {
+        var items: [FileTrashItemResult] = []
+        items.reserveCapacity(urls.count)
+        var stopped = false
+        for url in urls {
+            if stopped {
+                items.append(FileTrashItemResult(original: url, trashedURL: nil, status: .unprocessed))
+                continue
+            }
+            do {
+                let trashed = try moveToTrash(url)
+                items.append(FileTrashItemResult(original: url, trashedURL: trashed, status: .trashed))
+            } catch {
+                var failure = FileTrashItemResult(
+                    original: url, trashedURL: nil, status: .failed(error.localizedDescription)
+                )
+                if let cocoa = error as? CocoaError, cocoa.code == .featureUnsupported || cocoa.code == .fileWriteVolumeReadOnly {
+                    failure.trashUnsupported = true
+                }
+                items.append(failure)
+                stopped = true
+            }
+        }
+        return FileTrashReport(items: items)
+    }
+
+    @discardableResult
     public func rename(
         url: URL,
         to newName: String,
         resolve: (String) throws -> NameConflict
-    ) throws {
+    ) throws -> RenameOutcome {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("/"), trimmed != ".", trimmed != ".." else {
             throw FileOpError("그 이름은 쓸 수 없습니다.")
         }
         guard itemExists(url) else { throw FileOpError("원본 항목이 없습니다.") }
         let target = url.deletingLastPathComponent().appendingPathComponent(trimmed)
-        if stdPath(target) == stdPath(url) { return }
+        if stdPath(target) == stdPath(url) { return .unchanged }
         let result: FileTransferItemResult
         // Case-only renames on case-insensitive volumes need an intermediate name,
         // not replacement of an alias for the source itself.
@@ -246,6 +357,7 @@ public struct FileOps {
             result = write(url, to: target, moving: true, replacing: false, stagingMove: true)
         } else {
             result = try place(url, at: target, moving: true, resolve: resolve)
+            if result.status == .skipped { return .skipped }
         }
         if result.status == .failed || result.message != nil {
             var message = result.message ?? "이름을 바꾸지 못했습니다."
@@ -256,6 +368,7 @@ public struct FileOps {
             }
             throw FileOpError(message)
         }
+        return .renamed(result)
     }
 
     public static func sorted(_ entries: [FileEntry], by column: SortColumn, ascending: Bool) -> [FileEntry] {
@@ -297,8 +410,10 @@ public struct FileOps {
         return false
     }
 
-    public static func trashItem(_ url: URL) throws {
-        try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+    public static func trashItemRecording(_ url: URL) throws -> URL? {
+        var resulting: NSURL?
+        try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
+        return resulting as URL?
     }
 
     private func place(
@@ -344,7 +459,7 @@ public struct FileOps {
                      cancellation: cancellation, progress: progress)
     }
 
-    private func write(
+    func write(
         _ url: URL,
         to target: URL,
         moving: Bool,
@@ -361,7 +476,8 @@ public struct FileOps {
                 try cancellation?.check()
                 try fm.moveItem(at: url, to: target)
                 return FileTransferItemResult(
-                    source: url, destination: target, status: .completed, message: nil, recovery: nil
+                    source: url, destination: target, status: .completed, message: nil, recovery: nil,
+                    destinationID: fileIdentity(target), movedInPlace: true
                 )
             } catch {
                 return FileTransferItemResult(
@@ -390,7 +506,10 @@ public struct FileOps {
                 try fm.moveItem(at: url, to: incoming)
                 sourceStaged = true
             } else {
-                try copy(url, incoming, cancellation) { sample in
+                // Cloning needs the same volume; a clone cannot be interrupted, so
+                // cancellation is checked before it starts and before commit.
+                let performCopy = cloneOnSameVolume && sameVolume(url, directory) ? cloneCopy : copy
+                try performCopy(url, incoming, cancellation) { sample in
                     progress?.emit(.copying, copy: sample)
                 }
                 progress?.emit(.committing)
@@ -461,9 +580,11 @@ public struct FileOps {
         var status: FileTransferStatus = .completed
         var messages: [String] = []
         var locations: [URL] = []
+        var sourceTrashURL: URL?
+        var replacedTrashURL: URL?
         if moving && !moveSource {
             do {
-                try trash(url)
+                sourceTrashURL = try moveToTrash(url)
             } catch {
                 status = .failed
                 messages.append("복사본은 만들었지만 원본을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
@@ -473,7 +594,7 @@ public struct FileOps {
         var preservedBackup = false
         if destinationStaged {
             do {
-                try trash(previous)
+                replacedTrashURL = try moveToTrash(previous)
             } catch {
                 preservedBackup = true
                 messages.append("새 대상은 완성되었지만 기존 대상을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
@@ -493,11 +614,15 @@ public struct FileOps {
             FileTransferRecovery(status: .manualRecoveryRequired, locations: locations, message: $0)
         }
         return FileTransferItemResult(
-            source: url, destination: target, status: status, message: message, recovery: recovery
+            source: url, destination: target, status: status, message: message, recovery: recovery,
+            replacedExisting: destinationStaged, replacedTrashURL: replacedTrashURL,
+            sourceTrashURL: sourceTrashURL,
+            destinationID: status == .completed ? fileIdentity(target) : nil,
+            movedInPlace: moveSource
         )
     }
 
-    private func itemExists(_ url: URL) -> Bool {
+    func itemExists(_ url: URL) -> Bool {
         fm.fileExists(atPath: url.path) || (try? fm.destinationOfSymbolicLink(atPath: url.path)) != nil
     }
 
@@ -535,13 +660,13 @@ public struct FileOps {
         return "\(base).\(ext)"
     }
 
-    private func directoryExists(_ url: URL) -> Bool {
+    func directoryExists(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return fm.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
     }
 
 
-    private func stdPath(_ url: URL) -> String {
+    func stdPath(_ url: URL) -> String {
         url.standardizedFileURL.path
     }
 

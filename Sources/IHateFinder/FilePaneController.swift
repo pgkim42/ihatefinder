@@ -243,7 +243,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let ops = session.ops
         browser?.run("휴지통으로 보내지 못했습니다.") {
             for url in urls {
-                try ops.trash(url)
+                _ = try ops.moveToTrash(url)
             }
         }
     }

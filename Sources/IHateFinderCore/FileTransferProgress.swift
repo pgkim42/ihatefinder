@@ -99,7 +99,10 @@ final class TransferProgressEmitter {
 
 /// COPYFILE_ALL retains ACLs, extended attributes and stat metadata. NOFOLLOW
 /// preserves symbolic links, including dangling links, rather than their targets.
-/// No clone flag: data callbacks allow cancellation inside a single large file.
+/// `copy` uses no clone flag: data callbacks allow cancellation inside a single large
+/// file. `cloneCopy` adds COPYFILE_CLONE for same-volume copies: APFS clones the item
+/// at once (no byte progress, not interruptible), and other filesystems fall back to
+/// the data copy. Both check cancellation before starting and after finishing.
 enum NativeFileCopy {
     private final class Context {
         let cancellation: FileTransferCancellation?
@@ -150,6 +153,16 @@ enum NativeFileCopy {
 
     static func copy(_ source: URL, _ destination: URL, _ cancellation: FileTransferCancellation?,
                      _ progress: @escaping (FileCopyProgress) -> Void) throws {
+        try perform(source, destination, cancellation, progress, clone: false)
+    }
+
+    static func cloneCopy(_ source: URL, _ destination: URL, _ cancellation: FileTransferCancellation?,
+                          _ progress: @escaping (FileCopyProgress) -> Void) throws {
+        try perform(source, destination, cancellation, progress, clone: true)
+    }
+
+    private static func perform(_ source: URL, _ destination: URL, _ cancellation: FileTransferCancellation?,
+                                _ progress: @escaping (FileCopyProgress) -> Void, clone: Bool) throws {
         try cancellation?.check()
         guard let state = copyfile_state_alloc() else { throw POSIXError(.ENOMEM) }
         defer { copyfile_state_free(state) }
@@ -163,7 +176,8 @@ enum NativeFileCopy {
               copyfile_state_set(state, UInt32(COPYFILE_STATE_BSIZE), &blockSize) == 0 else {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
-        let flags = copyfile_flags_t(COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW | COPYFILE_EXCL)
+        var flags = copyfile_flags_t(COPYFILE_ALL | COPYFILE_RECURSIVE | COPYFILE_NOFOLLOW | COPYFILE_EXCL)
+        if clone { flags |= copyfile_flags_t(COPYFILE_CLONE) }
         let result = withExtendedLifetime(context) {
             copyfile(source.path, destination.path, state, flags)
         }
