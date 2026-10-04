@@ -72,20 +72,23 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         pathField.isEditable = true
         pathField.isSelectable = true
         pathField.isBezeled = true
+        pathField.bezelStyle = .roundedBezel
         pathField.font = .systemFont(ofSize: 13)
         pathField.lineBreakMode = .byTruncatingMiddle
         pathField.cell?.lineBreakMode = .byTruncatingMiddle
         pathField.delegate = self
         pathField.target = self
         pathField.action = #selector(commitPath)
+        pathField.placeholderString = "경로를 입력하거나 Command-L을 누르세요"
 
         table.pane = self
         table.headerView = NSTableHeaderView()
-        table.usesAlternatingRowBackgroundColors = true
+        table.usesAlternatingRowBackgroundColors = false
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
         table.allowsColumnReordering = false
-        table.rowHeight = 22
+        table.rowHeight = 24
+        table.intercellSpacing = NSSize(width: 3, height: 2)
         table.doubleAction = #selector(openSelection)
         table.target = self
         table.dataSource = self
@@ -110,12 +113,15 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
-        scroll.borderType = .bezelBorder
-        loadStatus.font = .systemFont(ofSize: 11)
+        scroll.borderType = .lineBorder
+        scroll.drawsBackground = true
+        loadStatus.font = .systemFont(ofSize: 11, weight: .regular)
+        loadStatus.textColor = .secondaryLabelColor
         loadStatus.lineBreakMode = .byTruncatingMiddle
         loadStatus.translatesAutoresizingMaskIntoConstraints = false
 
         filterField.placeholderString = "이 폴더에서 이름 거르기"
+        filterField.font = .systemFont(ofSize: 13)
         filterField.sendsSearchStringImmediately = true
         filterField.delegate = self
         filterField.target = self
@@ -130,17 +136,18 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         root.addSubview(scroll)
         root.addSubview(loadStatus)
         NSLayoutConstraint.activate([
-            pathField.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
-            pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            pathField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
-            filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            pathField.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
+            pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            pathField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            pathField.heightAnchor.constraint(equalToConstant: 22),
+            filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             scroll.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 8),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
-            scroll.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -4),
-            loadStatus.leadingAnchor.constraint(equalTo: scroll.leadingAnchor),
-            loadStatus.trailingAnchor.constraint(equalTo: scroll.trailingAnchor),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            scroll.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -6),
+            loadStatus.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 2),
+            loadStatus.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -2),
             loadStatus.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
         ])
         let filterTop = filterField.topAnchor.constraint(equalTo: pathField.bottomAnchor, constant: 0)
@@ -218,7 +225,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func setFocusedLook(_ focused: Bool) {
-        scroll.borderType = focused ? .bezelBorder : .lineBorder
+        if focused {
+            scroll.borderType = .lineBorder
+            scroll.borderColor = .controlAccentColor
+        } else {
+            scroll.borderType = .lineBorder
+            scroll.borderColor = .separatorColor
+        }
     }
 
     func selectedURLs() -> [URL] {
@@ -314,7 +327,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     func showFilter() {
         _ = view
         filterField.isHidden = false
-        filterTopConstraint?.constant = 6
+        filterTopConstraint?.constant = 8
         filterHeightConstraint?.constant = 22
         view.window?.makeFirstResponder(filterField)
         filterField.currentEditor()?.selectAll(nil)
@@ -788,7 +801,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let text = NSTextField()
         text.isBezeled = false
         text.drawsBackground = false
-        text.font = .systemFont(ofSize: 13)
+        text.font = .systemFont(ofSize: 13, weight: .regular)
         text.lineBreakMode = .byTruncatingTail
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
@@ -803,19 +816,19 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             cell.addSubview(image)
             cell.imageView = image
             NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
+                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 image.widthAnchor.constraint(equalToConstant: 16),
                 image.heightAnchor.constraint(equalToConstant: 16),
                 text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         } else {
             text.isEditable = false
             NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 4),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -4),
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         }

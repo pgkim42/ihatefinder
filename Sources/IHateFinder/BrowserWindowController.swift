@@ -59,13 +59,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         right = FilePaneController(session: rightSession)
         focused = left
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1080, height: 680),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "IHateFinder"
-        window.minSize = NSSize(width: 760, height: 420)
+        window.titlebarAppearsTransparent = false
+        window.minSize = NSSize(width: 800, height: 480)
         window.center()
         super.init(window: window)
         left.browser = self
@@ -528,16 +529,26 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private func installContent() {
         guard let window else { return }
         let content = NSView()
+        
+        let toolbar = NSView()
+        toolbar.translatesAutoresizingMaskIntoConstraints = false
+        
         let buttons = NSStackView()
         buttons.orientation = .horizontal
-        buttons.spacing = 6
-        buttons.addArrangedSubview(button("뒤로", #selector(goBackAction)))
-        buttons.addArrangedSubview(button("앞으로", #selector(goForwardAction)))
-        buttons.addArrangedSubview(button("위", #selector(goUpAction)))
-        buttons.addArrangedSubview(button("양쪽 창", #selector(toggleDual)))
+        buttons.spacing = 8
+        buttons.addArrangedSubview(toolbarButton("뒤로", #selector(goBackAction), "chevron.left"))
+        buttons.addArrangedSubview(toolbarButton("앞으로", #selector(goForwardAction), "chevron.right"))
+        buttons.addArrangedSubview(toolbarButton("위", #selector(goUpAction), "chevron.up"))
+        
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.widthAnchor.constraint(equalToConstant: 12).isActive = true
+        buttons.addArrangedSubview(spacer)
+        
+        buttons.addArrangedSubview(toolbarButton("양쪽 창", #selector(toggleDual), "rectangle.split.2x1"))
 
         sidebar.headerView = nil
-        sidebar.rowHeight = 22
+        sidebar.rowHeight = 24
         sidebar.allowsEmptySelection = true
         sidebar.dataSource = self
         sidebar.delegate = self
@@ -546,15 +557,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         sidebar.style = .sourceList
         sidebar.floatsGroupRows = true
         sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        sidebar.intercellSpacing = NSSize(width: 4, height: 1)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("place"))
         column.title = ""
-        column.width = 180
-        column.minWidth = 140
+        column.width = 200
+        column.minWidth = 160
         sidebar.addTableColumn(column)
         let sidebarScroll = NSScrollView()
         sidebarScroll.documentView = sidebar
         sidebarScroll.hasVerticalScroller = true
-        sidebarScroll.drawsBackground = false
+        sidebarScroll.drawsBackground = true
+        sidebarScroll.borderType = .noBorder
 
         paneSplit.isVertical = true
         paneSplit.dividerStyle = .thin
@@ -583,21 +596,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         outer.isVertical = true
         outer.dividerStyle = .thin
 
-        status.font = .systemFont(ofSize: 12)
+        status.font = .systemFont(ofSize: 11, weight: .regular)
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingTail
         transferProgress.style = .bar
         transferProgress.minValue = 0
         transferProgress.maxValue = 1
         transferProgress.isHidden = true
-        transferProgress.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        transferProgress.widthAnchor.constraint(equalToConstant: 160).isActive = true
         cancelTransferButton.target = self
         cancelTransferButton.action = #selector(cancelTransfer)
         cancelTransferButton.bezelStyle = .rounded
+        cancelTransferButton.controlSize = .small
         cancelTransferButton.isHidden = true
         let footer = NSStackView(views: [status, transferProgress, cancelTransferButton])
         footer.orientation = .horizontal
-        footer.spacing = 8
+        footer.spacing = 10
+        footer.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         status.setContentHuggingPriority(.defaultLow, for: .horizontal)
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -606,16 +621,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             content.addSubview(item)
         }
         NSLayoutConstraint.activate([
-            buttons.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
-            buttons.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 8),
-            outer.topAnchor.constraint(equalTo: buttons.bottomAnchor, constant: 8),
+            buttons.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            buttons.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            outer.topAnchor.constraint(equalTo: buttons.bottomAnchor, constant: 12),
             outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            footer.topAnchor.constraint(equalTo: outer.bottomAnchor, constant: 6),
-            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 10),
-            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -10),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -8),
-            buttons.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -8),
+            footer.topAnchor.constraint(equalTo: outer.bottomAnchor, constant: 8),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
+            buttons.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
         ])
         window.contentView = content
         refreshPlaces()
@@ -629,7 +644,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func outerPosition(_ outer: NSSplitView) {
-        outer.setPosition(180, ofDividerAt: 0)
+        outer.setPosition(200, ofDividerAt: 0)
         if dual { paneSplit.setPosition(paneSplit.bounds.width / 2, ofDividerAt: 0) }
     }
 
@@ -735,6 +750,17 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return choice
     }
 
+    private func toolbarButton(_ title: String, _ action: Selector, _ symbol: String) -> NSButton {
+        let button = NSButton(title: "", target: self, action: action)
+        button.bezelStyle = .texturedRounded
+        button.imagePosition = .imageOnly
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.toolTip = title
+        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        return button
+    }
+
     private func button(_ title: String, _ action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.bezelStyle = .rounded
@@ -768,12 +794,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             let cell = sidebarCell(tableView, identifier: "header", symbol: nil)
             cell.textField?.stringValue = title
             cell.textField?.font = .systemFont(ofSize: 11, weight: .semibold)
-            cell.textField?.textColor = .secondaryLabelColor
+            cell.textField?.textColor = .tertiaryLabelColor
             return cell
         case .place(let title, _, let symbol):
             let cell = sidebarCell(tableView, identifier: "place", symbol: symbol)
             cell.textField?.stringValue = title
-            cell.textField?.font = .systemFont(ofSize: 13)
+            cell.textField?.font = .systemFont(ofSize: 13, weight: .regular)
             cell.textField?.textColor = .labelColor
             cell.imageView?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             cell.imageView?.contentTintColor = .secondaryLabelColor
@@ -800,18 +826,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             cell.addSubview(image)
             cell.imageView = image
             NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
                 image.widthAnchor.constraint(equalToConstant: 16),
                 image.heightAnchor.constraint(equalToConstant: 16),
                 text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         } else {
             NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         }
