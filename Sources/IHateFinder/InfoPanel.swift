@@ -42,8 +42,9 @@ final class InfoPanel {
         alert.addButton(withTitle: "닫기")
         let text = NSTextField(wrappingLabelWithString: "읽는 중…")
         text.isSelectable = true
-        text.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        text.preferredMaxLayoutWidth = 420
+        text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        text.textColor = .labelColor
+        text.preferredMaxLayoutWidth = 480
         alert.accessoryView = text
         DispatchQueue.global(qos: .userInitiated).async {
             let model = InfoModel.make(url: url)
