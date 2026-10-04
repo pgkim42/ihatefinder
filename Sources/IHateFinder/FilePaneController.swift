@@ -139,7 +139,6 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             pathField.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             pathField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            pathField.heightAnchor.constraint(equalToConstant: 22),
             filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             scroll.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 8),
@@ -225,12 +224,14 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func setFocusedLook(_ focused: Bool) {
+        scroll.wantsLayer = true
+        scroll.borderType = .lineBorder
         if focused {
-            scroll.borderType = .lineBorder
-            scroll.borderColor = .controlAccentColor
+            scroll.layer?.borderWidth = 1.0
+            scroll.layer?.borderColor = NSColor.controlAccentColor.cgColor
         } else {
-            scroll.borderType = .lineBorder
-            scroll.borderColor = .separatorColor
+            scroll.layer?.borderWidth = 1.0
+            scroll.layer?.borderColor = NSColor.separatorColor.cgColor
         }
     }
 
@@ -328,7 +329,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         _ = view
         filterField.isHidden = false
         filterTopConstraint?.constant = 8
-        filterHeightConstraint?.constant = 22
+        filterHeightConstraint?.constant = 28
         view.window?.makeFirstResponder(filterField)
         filterField.currentEditor()?.selectAll(nil)
         browser?.focus(self)
