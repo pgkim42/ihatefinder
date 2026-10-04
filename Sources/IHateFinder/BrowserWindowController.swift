@@ -60,12 +60,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         focused = left
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 720),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "IHateFinder"
-        window.titlebarAppearsTransparent = false
         window.minSize = NSSize(width: 800, height: 480)
         window.center()
         super.init(window: window)
@@ -529,9 +528,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private func installContent() {
         guard let window else { return }
         let content = NSView()
-        
-        let toolbar = NSView()
-        toolbar.translatesAutoresizingMaskIntoConstraints = false
         
         let buttons = NSStackView()
         buttons.orientation = .horizontal
