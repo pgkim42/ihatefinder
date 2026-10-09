@@ -668,6 +668,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     /// Sets enablement from the selection and rebuilds the 다른 앱으로 열기 submenu.
     func refreshMenu(_ menu: NSMenu) {
+        browser?.focus(self)
         let selection = selectedURLs()
         let state = MenuState.make(selection: selection)
         let enabled: [Selector: Bool] = [
@@ -680,9 +681,15 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             #selector(copyPathSelection): state.copyPath,
             #selector(showInfo): state.info,
             #selector(openInTerminalAction): state.terminal,
+            #selector(BrowserWindowController.previewSelection): state.open && table.editedRow < 0,
+            #selector(BrowserWindowController.addCurrentFolderToFavorites): browser?.canAddCurrentFolderToFavorites ?? false,
         ]
         for item in menu.items {
             if let action = item.action, let value = enabled[action] { item.isEnabled = value }
+            if item.action == #selector(BrowserWindowController.copyToOther) ||
+                item.action == #selector(BrowserWindowController.moveToOther) {
+                item.isEnabled = browser?.configureTransferMenuItem(item) ?? false
+            }
         }
         if let item = menu.items.first(where: { $0.submenu === openWithMenu }) {
             item.isEnabled = state.openWith
@@ -764,6 +771,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         openWith.submenu = openWithMenu
         openWithMenu.delegate = self
         menu.addItem(openWith)
+        menu.addItem(NSMenuItem(title: "미리보기 (Space)", action: #selector(BrowserWindowController.previewSelection), keyEquivalent: ""))
         menu.addItem(.separator())
         let items: [(String, Selector)] = [
             ("새 폴더", #selector(makeFolder)),
@@ -771,12 +779,15 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             ("잘라두기", #selector(BrowserWindowController.cut(_:))),
             ("복사", #selector(BrowserWindowController.copy(_:))),
             ("붙여넣기", #selector(BrowserWindowController.paste(_:))),
+            ("반대쪽으로 복사 (F5)", #selector(BrowserWindowController.copyToOther)),
+            ("반대쪽으로 이동 (F6)", #selector(BrowserWindowController.moveToOther)),
             ("이름 바꾸기", #selector(beginRename)),
             ("휴지통으로 옮기기", #selector(trashSelection)),
             ("압축", #selector(compressSelection)),
             ("경로 복사", #selector(copyPathSelection)),
             ("정보 보기", #selector(showInfo)),
             ("터미널에서 열기", #selector(openInTerminalAction)),
+            ("현재 폴더를 즐겨찾기에 추가", #selector(BrowserWindowController.addCurrentFolderToFavorites)),
         ]
         for (title, action) in items {
             if title == "잘라두기" || title == "이름 바꾸기" || title == "압축" || title == "경로 복사" {

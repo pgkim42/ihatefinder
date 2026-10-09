@@ -21,10 +21,7 @@ final class ContextMenuTests: XCTestCase {
     private func makeBrowser(_ t: TestBrowser) async throws -> FilePaneController {
         let pane = t.browser.left
         _ = pane.view
-        let deadline = Date().addingTimeInterval(5)
-        while pane.session.isLoading || pane.session.entries.isEmpty, Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        await awaitPaneLoad(pane) { pane.session.reload() }
         return pane
     }
 
@@ -44,32 +41,38 @@ final class ContextMenuTests: XCTestCase {
     func testMenuOrderAndEnablementFollowSelection() async throws {
         try await withBrowser(files: ["a.txt", "b.txt"]) { _, pane in
             let menu = try XCTUnwrap(pane.table.menu)
-            let titles = menu.items.map { $0.isSeparatorItem ? "-" : $0.title }
-            XCTAssertEqual(titles, [
-                "열기", "다른 앱으로 열기", "-", "새 폴더", "새 텍스트 파일", "-", "잘라두기", "복사", "붙여넣기",
-                "-", "이름 바꾸기", "휴지통으로 옮기기", "-", "압축", "-", "경로 복사", "정보 보기", "터미널에서 열기",
-            ])
-            func item(_ title: String) -> NSMenuItem { menu.items.first { $0.title == title }! }
+            let actions = menu.items.filter { !$0.isSeparatorItem }.map { $0.submenu == nil ? $0.action : nil }
+            XCTAssertEqual(actions, [
+                "openSelection", nil, "previewSelection", "makeFolder", "makeTextFile",
+                "cut:", "copy:", "paste:", "copyToOther", "moveToOther", "beginRename",
+                "trashSelection", "compressSelection", "copyPathSelection", "showInfo",
+                "openInTerminalAction", "addCurrentFolderToFavorites",
+            ].map { $0.map(NSSelectorFromString) })
+            func item(_ action: String) -> NSMenuItem {
+                menu.items.first { $0.action == NSSelectorFromString(action) }!
+            }
 
             pane.table.deselectAll(nil)
             pane.refreshMenu(menu)
-            XCTAssertFalse(item("열기").isEnabled)
-            XCTAssertFalse(item("다른 앱으로 열기").isEnabled)
-            XCTAssertFalse(item("경로 복사").isEnabled)
-            XCTAssertFalse(item("압축").isEnabled)
-            XCTAssertTrue(item("터미널에서 열기").isEnabled)
+            XCTAssertFalse(item("openSelection").isEnabled)
+            XCTAssertFalse(item("previewSelection").isEnabled)
+            XCTAssertFalse(menu.items.first { $0.submenu != nil }!.isEnabled)
+            XCTAssertFalse(item("copyPathSelection").isEnabled)
+            XCTAssertFalse(item("compressSelection").isEnabled)
+            XCTAssertTrue(item("openInTerminalAction").isEnabled)
 
             pane.table.selectAll(nil)
             pane.refreshMenu(menu)
-            XCTAssertTrue(item("열기").isEnabled)
-            XCTAssertTrue(item("경로 복사").isEnabled)
-            XCTAssertFalse(item("압축").isEnabled)
-            XCTAssertFalse(item("정보 보기").isEnabled)
+            XCTAssertTrue(item("openSelection").isEnabled)
+            XCTAssertTrue(item("previewSelection").isEnabled)
+            XCTAssertTrue(item("copyPathSelection").isEnabled)
+            XCTAssertFalse(item("compressSelection").isEnabled)
+            XCTAssertFalse(item("showInfo").isEnabled)
 
             pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             pane.refreshMenu(menu)
-            XCTAssertTrue(item("압축").isEnabled)
-            XCTAssertTrue(item("정보 보기").isEnabled)
+            XCTAssertTrue(item("compressSelection").isEnabled)
+            XCTAssertTrue(item("showInfo").isEnabled)
         }
     }
 

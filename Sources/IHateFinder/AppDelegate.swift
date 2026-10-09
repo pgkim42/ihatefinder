@@ -85,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(menu("파일", [
             item("새 폴더", #selector(BrowserWindowController.makeFolder), "n", [.command, .shift]),
             item("새 텍스트 파일", #selector(BrowserWindowController.makeTextFile), "n", [.command, .option]),
+            item("현재 폴더를 즐겨찾기에 추가", #selector(BrowserWindowController.addCurrentFolderToFavorites), "", []),
         ]))
         main.addItem(menu("편집", [
             item("실행 취소", Selector(("undo:")), "z", .command),
@@ -93,9 +94,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("잘라두기", #selector(BrowserWindowController.cut(_:)), "x", .command),
             item("복사", #selector(BrowserWindowController.copy(_:)), "c", .command),
             item("붙여넣기", #selector(BrowserWindowController.paste(_:)), "v", .command),
+            .separator(),
+            item("반대쪽으로 복사 (F5)", #selector(BrowserWindowController.copyToOther), "", []),
+            item("반대쪽으로 이동 (F6)", #selector(BrowserWindowController.moveToOther), "", []),
+            .separator(),
             item("모두 선택", #selector(NSText.selectAll(_:)), "a", .command),
             item("이름 바꾸기", #selector(BrowserWindowController.beginRename), "", []),
-            item("찾기", #selector(BrowserWindowController.findInFolder), "f", .command),
+            item("이 폴더에서 이름 거르기", #selector(BrowserWindowController.findInFolder), "f", .command),
         ]))
         main.addItem(menu("이동", [
             item("뒤로", #selector(BrowserWindowController.goBackAction), "[", .command),
@@ -103,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("위", #selector(BrowserWindowController.goUpAction), upArrow, .command),
         ]))
         main.addItem(menu("보기", [
+            item("미리보기 (Space)", #selector(BrowserWindowController.previewSelection), "y", .command),
             item("숨김 파일", #selector(BrowserWindowController.toggleHidden), ".", [.command, .shift]),
             item("양쪽 창", #selector(BrowserWindowController.toggleDual), "", []),
         ]))

@@ -15,7 +15,7 @@ struct TestBrowser {
 }
 
 @MainActor
-func makeTestBrowser(root: URL) throws -> TestBrowser {
+func makeTestBrowser(root: URL, favoriteStore: FavoritePlacesStore? = nil) throws -> TestBrowser {
     _ = NSApplication.shared
     let fm = FileManager.default
     let left = root.appendingPathComponent("left", isDirectory: true)
@@ -26,6 +26,7 @@ func makeTestBrowser(root: URL) throws -> TestBrowser {
     }
     let browser = BrowserWindowController(
         workspaceStore: nil,
+        favoriteStore: favoriteStore,
         pasteboard: NSPasteboard(name: .init("IHateFinder.test.\(UUID().uuidString)")),
         makeOps: { FileOps(sameVolume: FileOps.volumesMatch, moveToTrash: testBinTrash(into: bin), cloneOnSameVolume: false) },
         initialURLs: (left: left, right: right)
@@ -45,13 +46,44 @@ func testBinTrash(into bin: URL) -> (URL) throws -> URL? {
 }
 
 extension BrowserWindowController {
-    /// Polls until no file operation is running.
+    /// Subscribes to the exact operation state before checking whether it already settled.
     @MainActor
     func waitIdle(timeout: TimeInterval = 5) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while isFileOperationRunning, Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
+        let completed = XCTestExpectation(description: "File operation finished")
+        let previous = onFileOperationStateChange
+        var fulfilled = false
+        let finish = { [weak self] in
+            guard let self, !self.isFileOperationRunning, !fulfilled else { return }
+            fulfilled = true
+            completed.fulfill()
         }
+        onFileOperationStateChange = { previous?(); finish() }
+        defer { onFileOperationStateChange = previous }
+        finish()
+        let result = await XCTWaiter.fulfillment(of: [completed], timeout: timeout)
+        XCTAssertEqual(result, .completed)
         XCTAssertFalse(isFileOperationRunning, "File operation did not finish")
     }
+}
+
+/// Installs the committed-list signal before triggering a reload or navigation.
+@MainActor
+func awaitPaneLoad(_ pane: FilePaneController, expectedURL: URL? = nil, action: () -> Void) async {
+    let completed = XCTestExpectation(description: "Pane committed requested list")
+    let previous = pane.session.onChange
+    let revision = pane.session.revision
+    let target = (expectedURL ?? pane.session.url).standardizedFileURL
+    var fulfilled = false
+    pane.session.onChange = {
+        previous?()
+        guard !pane.session.isLoading, pane.session.url == target,
+              pane.session.revision > revision, !fulfilled else { return }
+        fulfilled = true
+        completed.fulfill()
+    }
+    defer { pane.session.onChange = previous }
+    action()
+    let result = await XCTWaiter.fulfillment(of: [completed], timeout: 5)
+    XCTAssertEqual(result, .completed)
+    XCTAssertEqual(pane.session.loadState, .idle)
 }

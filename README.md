@@ -127,6 +127,7 @@ When you type in a text field, Command-Z or Control-Z undoes the typing. This is
 | Option-Return | Shows the info of the item: name, kind, size, dates, path, and permissions. |
 
 The filter looks only in the current folder. It does not look in subfolders.
+The Edit menu names this command **이 폴더에서 이름 거르기**. The View menu and the right-click menu also have **미리보기 (Space)**.
 
 ### Text fields
 
@@ -143,10 +144,22 @@ The right-click menu has these commands:
 - **경로 복사** (Copy Path): copies the full path as text.
 - **정보 보기** (Info)
 - **터미널에서 열기** (Open in Terminal)
+- **반대쪽으로 복사 (F5)** and **반대쪽으로 이동 (F6)**: show the destination folder name. The commands are also in the Edit menu. They are disabled if the second list is hidden, nothing is selected, or a transfer is running.
+- **현재 폴더를 즐겨찾기에 추가** (Add Current Folder to Favorites).
 
 ### Two lists
 
 Click **양쪽 창** to show a second list. Click a list to give it the keyboard focus.
+
+### Favorites
+
+1. Open a folder in the focused list.
+2. Choose **현재 폴더를 즐겨찾기에 추가** in the File menu or the right-click menu.
+3. Click its sidebar shortcut to open it in the focused list.
+4. Right-click a favorite to choose **즐겨찾기 열기** (Open Favorite), remove it, or move it up or down.
+
+The app saves the order. Adding the same path twice does not add a second shortcut. Removing a shortcut does not move or delete the folder. Favorites store absolute paths; they do not track a folder renamed or moved by another app.
+
 
 ## Transfers
 

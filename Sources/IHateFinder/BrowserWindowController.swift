@@ -2,10 +2,10 @@ import AppKit
 import Quartz
 import IHateFinderCore
 
-final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, NSMenuItemValidation {
     let left: FilePaneController
     let right: FilePaneController
-    private let sidebar = NSTableView()
+    let sidebar = NSTableView()
     private let status = NSTextField(labelWithString: "")
     private let transferProgress = NSProgressIndicator()
     private let cancelTransferButton = NSButton(title: "취소", target: nil, action: nil)
@@ -18,9 +18,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private var places: [SidebarItem] = []
     private var focused: FilePaneController
     private var dual = false
-    var busy = false
+    var busy = false {
+        didSet { onFileOperationStateChange?() }
+    }
+    var onFileOperationStateChange: (() -> Void)?
     private let clipboard: FileClipboard
     private let workspaceStore: WorkspaceStore?
+    private let favoriteStore: FavoritePlacesStore?
+    private(set) var favoritePlaces: [URL] = []
+    private(set) var placesRevision = 0
     private var transferCancellation: FileTransferCancellation?
     private var rememberedChoice: NameConflict?
     let undoJournal = FileUndoJournal()
@@ -38,11 +44,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     /// state is ignored and both sessions start at those folders.
     init(
         workspaceStore: WorkspaceStore? = WorkspaceStore(),
+        favoriteStore: FavoritePlacesStore? = nil,
         pasteboard: NSPasteboard = .general,
         makeOps: @escaping () -> FileOps = { FileOps(cloneOnSameVolume: true) },
         initialURLs: (left: URL, right: URL)? = nil
     ) {
         self.workspaceStore = workspaceStore
+        self.favoriteStore = favoriteStore ?? (initialURLs == nil ? FavoritePlacesStore() : nil)
+        favoritePlaces = self.favoriteStore?.load() ?? []
         clipboard = FileClipboard(pasteboard: pasteboard)
         let saved = initialURLs == nil ? workspaceStore?.load() : nil
         let leftSession: BrowserSession
@@ -75,13 +84,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handle(event) ?? event
         }
-        NotificationCenter.default.addObserver(
+        NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(refreshPlaces),
             name: NSWorkspace.didMountNotification,
             object: nil
         )
-        NotificationCenter.default.addObserver(
+        NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(refreshPlaces),
             name: NSWorkspace.didUnmountNotification,
@@ -102,6 +111,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         if let keyMonitor {
             NSEvent.removeMonitor(keyMonitor)
         }
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
     }
 
     func updateStatus() {
@@ -478,6 +489,93 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc func beginRename() { focused.beginRename() }
     @objc func findInFolder() { focused.showFilter() }
 
+    @objc func previewSelection() {
+        guard focused.table.editedRow < 0, !focused.selectedURLs().isEmpty else { return }
+        window?.makeFirstResponder(focused.table)
+        focused.toggleQuickLook()
+    }
+
+    func configureTransferMenuItem(_ item: NSMenuItem) -> Bool {
+        let copying = item.action == #selector(copyToOther)
+        let destination = other().session.url
+        item.title = "반대쪽 \(destination.lastPathComponent)으로 \(copying ? "복사" : "이동") (\(copying ? "F5" : "F6"))"
+        item.toolTip = destination.path
+        return dual && !busy && focused.table.editedRow < 0 && !focused.selectedURLs().isEmpty
+    }
+
+    var canAddCurrentFolderToFavorites: Bool {
+        focused.session.persistedState != nil && !favoritePlaces.contains(focused.session.url)
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(copyToOther), #selector(moveToOther):
+            return configureTransferMenuItem(menuItem)
+        case #selector(previewSelection):
+            return focused.table.editedRow < 0 && !focused.selectedURLs().isEmpty
+        case #selector(addCurrentFolderToFavorites):
+            return canAddCurrentFolderToFavorites
+        default:
+            return true
+        }
+    }
+
+    @objc func addCurrentFolderToFavorites() {
+        guard canAddCurrentFolderToFavorites else { return }
+        let url = URL(fileURLWithPath: focused.session.url.standardizedFileURL.path, isDirectory: true)
+        favoritePlaces.append(url)
+        favoriteStore?.save(favoritePlaces)
+        refreshPlaces()
+    }
+
+    @objc func openFavorite(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL, favoritePlaces.contains(url) else { return }
+        focused.navigateSidebar(url)
+        window?.makeFirstResponder(focused.table)
+    }
+
+    @objc func removeFavorite(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL,
+              let index = favoritePlaces.firstIndex(of: url) else { return }
+        favoritePlaces.remove(at: index)
+        favoriteStore?.save(favoritePlaces)
+        refreshPlaces()
+    }
+
+    @objc func moveFavoriteUp(_ sender: NSMenuItem) { moveFavorite(sender, offset: -1) }
+    @objc func moveFavoriteDown(_ sender: NSMenuItem) { moveFavorite(sender, offset: 1) }
+
+    private func moveFavorite(_ sender: NSMenuItem, offset: Int) {
+        guard let url = sender.representedObject as? URL,
+              let index = favoritePlaces.firstIndex(of: url),
+              favoritePlaces.indices.contains(index + offset) else { return }
+        favoritePlaces.swapAt(index, index + offset)
+        favoriteStore?.save(favoritePlaces)
+        refreshPlaces()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === sidebar.menu else { return }
+        let row = sidebar.clickedRow >= 0 ? sidebar.clickedRow : sidebar.selectedRow
+        let url: URL?
+        if places.indices.contains(row), case .favorite(let favorite) = places[row] {
+            url = favorite
+        } else {
+            url = nil
+        }
+        let index = url.flatMap { favoritePlaces.firstIndex(of: $0) }
+        for item in menu.items {
+            item.representedObject = url
+            switch item.action {
+            case #selector(openFavorite): item.isEnabled = index != nil
+            case #selector(removeFavorite): item.isEnabled = index != nil
+            case #selector(moveFavoriteUp): item.isEnabled = index.map { $0 > 0 } ?? false
+            case #selector(moveFavoriteDown): item.isEnabled = index.map { $0 + 1 < favoritePlaces.count } ?? false
+            default: break
+            }
+        }
+    }
+
     @objc func cut(_ sender: Any?) {
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
@@ -521,7 +619,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     @objc func refreshPlaces() {
-        places = Self.loadPlaces()
+        places = Self.loadPlaces(favorites: favoritePlaces)
+        placesRevision += 1
         sidebar.reloadData()
     }
 
@@ -550,6 +649,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         sidebar.delegate = self
         sidebar.target = self
         sidebar.action = #selector(openPlace)
+        let placesMenu = NSMenu()
+        placesMenu.autoenablesItems = false
+        placesMenu.delegate = self
+        for (title, action) in [
+            ("즐겨찾기 열기", #selector(openFavorite(_:))),
+            ("즐겨찾기에서 제거", #selector(removeFavorite(_:))),
+            ("즐겨찾기 위로 이동", #selector(moveFavoriteUp(_:))),
+            ("즐겨찾기 아래로 이동", #selector(moveFavoriteDown(_:))),
+        ] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            placesMenu.addItem(item)
+        }
+        sidebar.menu = placesMenu
         sidebar.style = .sourceList
         sidebar.floatsGroupRows = true
         sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
@@ -686,16 +799,16 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return true
     }
 
-    private func copyToOther() {
-        guard dual else { return }
+    @objc func copyToOther() {
+        guard dual, !busy, focused.table.editedRow < 0 else { return }
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         let dest = other().session.url
         runTransfer(urls: urls, to: dest, moving: false)
     }
 
-    private func moveToOther() {
-        guard dual else { return }
+    @objc func moveToOther() {
+        guard dual, !busy, focused.table.editedRow < 0 else { return }
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         let dest = other().session.url
@@ -763,9 +876,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return button
     }
 
-    @objc private func openPlace() {
-        let row = sidebar.clickedRow
-        guard places.indices.contains(row), case .place(_, let url, _) = places[row] else { return }
+    @objc func openPlace() {
+        let row = sidebar.clickedRow >= 0 ? sidebar.clickedRow : sidebar.selectedRow
+        guard places.indices.contains(row) else { return }
+        let url: URL
+        switch places[row] {
+        case .place(_, let place, _), .favorite(let place): url = place
+        case .header: return
+        }
         focused.navigateSidebar(url)
         window?.makeFirstResponder(focused.table)
     }
@@ -799,6 +917,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             cell.textField?.textColor = .labelColor
             cell.imageView?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             cell.imageView?.contentTintColor = .secondaryLabelColor
+            return cell
+        case .favorite(let url):
+            let cell = sidebarCell(tableView, identifier: "favorite", symbol: "star")
+            cell.textField?.stringValue = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+            cell.textField?.font = .systemFont(ofSize: 13)
+            cell.textField?.textColor = .labelColor
+            cell.toolTip = url.path
             return cell
         }
     }
@@ -845,17 +970,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return BrowserSession(url: home, ops: ops)
     }
 
-    private static func loadPlaces() -> [SidebarItem] {
+    private static func loadPlaces(favorites: [URL]) -> [SidebarItem] {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
         var items: [SidebarItem] = [
+            .header("즐겨찾기"),
+        ]
+        items.append(contentsOf: favorites.map(SidebarItem.favorite))
+        items.append(contentsOf: [
             .header("위치"),
             .place(title: "홈", url: home, symbol: "house"),
             .place(title: "데스크탑", url: home.appendingPathComponent("Desktop"), symbol: "desktopcomputer"),
             .place(title: "문서", url: home.appendingPathComponent("Documents"), symbol: "doc.text"),
             .place(title: "다운로드", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle"),
             .place(title: "응용 프로그램", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "square.grid.2x2"),
-        ]
+        ])
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsEjectableKey]
         let volumes = fm.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
         var disks: [SidebarItem] = []
@@ -880,4 +1009,5 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 private enum SidebarItem {
     case header(String)
     case place(title: String, url: URL, symbol: String)
+    case favorite(URL)
 }
