@@ -8,7 +8,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     let sidebar = NSTableView()
     private let status = NSTextField(labelWithString: "")
     private let transferProgress = NSProgressIndicator()
-    private let cancelTransferButton = NSButton(title: "취소", target: nil, action: nil)
+    private let cancelTransferButton = StudioTextButton(frame: .zero)
     private let paneSplitController = NSSplitViewController()
     private let outerSplitController = NSSplitViewController()
     private var paneSplit: NSSplitView {
@@ -68,13 +68,18 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         right = FilePaneController(session: rightSession)
         focused = left
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1120, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 1180, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "IHateFinder"
-        window.minSize = NSSize(width: 800, height: 480)
+        window.minSize = NSSize(width: 880, height: 540)
+        window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
+        window.titleVisibility = .hidden
+        window.backgroundColor = Studio.canvas
+        window.isMovableByWindowBackground = true
         window.center()
         super.init(window: window)
         left.browser = self
@@ -626,25 +631,65 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     private func installContent() {
         guard let window else { return }
-        let content = NSView()
-        
+        let content = StudioCanvas()
+
         let buttons = NSStackView()
         buttons.orientation = .horizontal
-        buttons.spacing = 8
+        buttons.spacing = 2
+        buttons.edgeInsets = NSEdgeInsets(top: 3, left: 3, bottom: 3, right: 3)
         buttons.addArrangedSubview(toolbarButton("뒤로", #selector(goBackAction), "chevron.left"))
         buttons.addArrangedSubview(toolbarButton("앞으로", #selector(goForwardAction), "chevron.right"))
         buttons.addArrangedSubview(toolbarButton("위", #selector(goUpAction), "chevron.up"))
-        
-        let spacer = NSView()
-        spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.widthAnchor.constraint(equalToConstant: 12).isActive = true
-        buttons.addArrangedSubview(spacer)
-        
-        buttons.addArrangedSubview(toolbarButton("양쪽 창", #selector(toggleDual), "rectangle.split.2x1"))
+        let cluster = StudioCanvas()
+        cluster.fill = Studio.chip
+        cluster.cornerRadius = 12
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        cluster.addSubview(buttons)
+        NSLayoutConstraint.activate([
+            buttons.topAnchor.constraint(equalTo: cluster.topAnchor),
+            buttons.leadingAnchor.constraint(equalTo: cluster.leadingAnchor),
+            buttons.trailingAnchor.constraint(equalTo: cluster.trailingAnchor),
+            buttons.bottomAnchor.constraint(equalTo: cluster.bottomAnchor),
+        ])
+
+        let dualButton = toolbarButton("양쪽 창", #selector(toggleDual), "rectangle.split.2x1")
+        let dualWell = StudioCanvas()
+        dualWell.fill = Studio.chip
+        dualWell.cornerRadius = 12
+        dualButton.translatesAutoresizingMaskIntoConstraints = false
+        dualWell.addSubview(dualButton)
+        NSLayoutConstraint.activate([
+            dualButton.topAnchor.constraint(equalTo: dualWell.topAnchor, constant: 3),
+            dualButton.leadingAnchor.constraint(equalTo: dualWell.leadingAnchor, constant: 3),
+            dualButton.trailingAnchor.constraint(equalTo: dualWell.trailingAnchor, constant: -3),
+            dualButton.bottomAnchor.constraint(equalTo: dualWell.bottomAnchor, constant: -3),
+        ])
+
+        let mark = StudioMark()
+        mark.translatesAutoresizingMaskIntoConstraints = false
+        let wordmark = NSTextField(labelWithString: "IHateFinder")
+        wordmark.font = .systemFont(ofSize: 13, weight: .semibold)
+        wordmark.textColor = Studio.ink
+        let brand = NSStackView(views: [mark, wordmark])
+        brand.orientation = .horizontal
+        brand.spacing = 8
+        brand.alignment = .centerY
+        let headerSpacer = NSView()
+        let header = NSStackView(views: [cluster, dualWell, headerSpacer, brand])
+        header.orientation = .horizontal
+        header.spacing = 8
+        header.alignment = .centerY
+        header.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+        let headerRule = StudioHairline()
 
         sidebar.headerView = nil
-        sidebar.rowHeight = 24
+        sidebar.rowHeight = 32
         sidebar.allowsEmptySelection = true
+        sidebar.selectionHighlightStyle = .none
+        sidebar.focusRingType = .none
+        sidebar.backgroundColor = Studio.rail
         sidebar.dataSource = self
         sidebar.delegate = self
         sidebar.target = self
@@ -663,27 +708,29 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             placesMenu.addItem(item)
         }
         sidebar.menu = placesMenu
-        sidebar.style = .sourceList
-        sidebar.floatsGroupRows = true
+        sidebar.style = .plain
         sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        sidebar.intercellSpacing = NSSize(width: 4, height: 1)
+        sidebar.intercellSpacing = NSSize(width: 0, height: 2)
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("place"))
         column.title = ""
-        column.width = 200
-        column.minWidth = 160
+        column.width = 220
+        column.minWidth = 180
         sidebar.addTableColumn(column)
         let sidebarScroll = NSScrollView()
         sidebarScroll.documentView = sidebar
         sidebarScroll.hasVerticalScroller = true
+        sidebarScroll.autohidesScrollers = true
+        sidebarScroll.scrollerStyle = .overlay
         sidebarScroll.drawsBackground = true
+        sidebarScroll.backgroundColor = Studio.rail
         sidebarScroll.borderType = .noBorder
 
         paneSplit.isVertical = true
         paneSplit.dividerStyle = .thin
         let leftItem = NSSplitViewItem(viewController: left)
-        leftItem.minimumThickness = 260
+        leftItem.minimumThickness = 280
         let rightItem = NSSplitViewItem(viewController: right)
-        rightItem.minimumThickness = 260
+        rightItem.minimumThickness = 280
         rightItem.canCollapse = true
         rightItem.isCollapsed = !dual
         paneSplitController.addSplitViewItem(leftItem)
@@ -691,13 +738,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         let sidebarController = NSViewController()
         sidebarController.view = sidebarScroll
-        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
-        sidebarItem.minimumThickness = 160
-        sidebarItem.maximumThickness = 240
+        let sidebarItem = NSSplitViewItem(viewController: sidebarController)
+        sidebarItem.minimumThickness = 180
+        sidebarItem.maximumThickness = 280
         sidebarItem.canCollapse = false
         sidebarItem.holdingPriority = .defaultHigh
         let panesItem = NSSplitViewItem(viewController: paneSplitController)
-        panesItem.minimumThickness = 260
+        panesItem.minimumThickness = 280
         outerSplitController.addSplitViewItem(sidebarItem)
         outerSplitController.addSplitViewItem(panesItem)
         _ = outerSplitController.view
@@ -705,41 +752,58 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         outer.isVertical = true
         outer.dividerStyle = .thin
 
-        status.font = .systemFont(ofSize: 11, weight: .regular)
-        status.textColor = .secondaryLabelColor
+        status.font = .systemFont(ofSize: 11, weight: .medium)
+        status.textColor = Studio.muted
         status.lineBreakMode = .byTruncatingTail
         transferProgress.style = .bar
+        transferProgress.controlSize = .small
         transferProgress.minValue = 0
         transferProgress.maxValue = 1
         transferProgress.isHidden = true
-        transferProgress.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        transferProgress.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        cancelTransferButton.title = "취소"
         cancelTransferButton.target = self
         cancelTransferButton.action = #selector(cancelTransfer)
-        cancelTransferButton.bezelStyle = .rounded
-        cancelTransferButton.controlSize = .small
         cancelTransferButton.isHidden = true
-        let footer = NSStackView(views: [status, transferProgress, cancelTransferButton])
+        cancelTransferButton.widthAnchor.constraint(equalToConstant: 52).isActive = true
+        cancelTransferButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let dot = StudioDot()
+        dot.widthAnchor.constraint(equalToConstant: 7).isActive = true
+        dot.heightAnchor.constraint(equalToConstant: 7).isActive = true
+        let footer = NSStackView(views: [dot, status, transferProgress, cancelTransferButton])
         footer.orientation = .horizontal
-        footer.spacing = 10
-        footer.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        footer.alignment = .centerY
+        footer.spacing = 8
+        footer.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
         status.setContentHuggingPriority(.defaultLow, for: .horizontal)
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let footerRule = StudioHairline()
 
-        for item in [buttons, outer, footer] {
+        for item in [header, headerRule, outer, footerRule, footer] {
             item.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(item)
         }
         NSLayoutConstraint.activate([
-            buttons.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-            buttons.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-            outer.topAnchor.constraint(equalTo: buttons.bottomAnchor, constant: 12),
+            header.topAnchor.constraint(equalTo: content.topAnchor, constant: 8),
+            header.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 40),
+            headerRule.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
+            headerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            headerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            headerRule.heightAnchor.constraint(equalToConstant: 1),
+            outer.topAnchor.constraint(equalTo: headerRule.bottomAnchor),
             outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            footer.topAnchor.constraint(equalTo: outer.bottomAnchor, constant: 8),
+            footerRule.topAnchor.constraint(equalTo: outer.bottomAnchor),
+            footerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footerRule.heightAnchor.constraint(equalToConstant: 1),
+            footer.topAnchor.constraint(equalTo: footerRule.bottomAnchor),
             footer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             footer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
-            buttons.trailingAnchor.constraint(lessThanOrEqualTo: content.trailingAnchor, constant: -12),
+            footer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            footer.heightAnchor.constraint(equalToConstant: 32),
         ])
         window.contentView = content
         refreshPlaces()
@@ -753,7 +817,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func outerPosition(_ outer: NSSplitView) {
-        outer.setPosition(200, ofDividerAt: 0)
+        outer.setPosition(220, ofDividerAt: 0)
         if dual { paneSplit.setPosition(paneSplit.bounds.width / 2, ofDividerAt: 0) }
     }
 
@@ -860,13 +924,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func toolbarButton(_ title: String, _ action: Selector, _ symbol: String) -> NSButton {
-        let button = NSButton(title: "", target: self, action: action)
-        button.bezelStyle = .texturedRounded
-        button.imagePosition = .imageOnly
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.toolTip = title
-        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let button = StudioIconButton(title: title, symbol: symbol, action: action)
+        button.target = self
+        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return button
     }
 
@@ -893,8 +954,23 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-        if case .header = places[row] { return true }
-        return false
+        false
+    }
+
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        if case .header = places[row] { return 22 }
+        return 32
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let rowView = tableView.makeView(
+            withIdentifier: NSUserInterfaceItemIdentifier("studio-sidebar-row"),
+            owner: self
+        ) as? StudioRowView ?? StudioRowView()
+        rowView.identifier = NSUserInterfaceItemIdentifier("studio-sidebar-row")
+        rowView.surface = Studio.rail
+        rowView.horizontalInset = 8
+        return rowView
     }
 
     func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -903,29 +979,37 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let selected = tableView.selectedRowIndexes.contains(row)
         switch places[row] {
         case .header(let title):
             let cell = sidebarCell(tableView, identifier: "header", symbol: nil)
             cell.textField?.stringValue = title
-            cell.textField?.font = .systemFont(ofSize: 11, weight: .semibold)
-            cell.textField?.textColor = .tertiaryLabelColor
+            cell.textField?.font = Studio.sectionFont
+            cell.textField?.textColor = Studio.muted
             return cell
         case .place(let title, _, let symbol):
             let cell = sidebarCell(tableView, identifier: "place", symbol: symbol)
             cell.textField?.stringValue = title
-            cell.textField?.font = .systemFont(ofSize: 13, weight: .regular)
-            cell.textField?.textColor = .labelColor
+            cell.textField?.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .regular)
+            cell.textField?.textColor = Studio.ink
             cell.imageView?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            cell.imageView?.contentTintColor = .secondaryLabelColor
+            cell.imageView?.contentTintColor = selected ? Studio.accent : Studio.muted
             return cell
         case .favorite(let url):
-            let cell = sidebarCell(tableView, identifier: "favorite", symbol: "star")
+            let cell = sidebarCell(tableView, identifier: "favorite", symbol: "star.fill")
             cell.textField?.stringValue = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
-            cell.textField?.font = .systemFont(ofSize: 13)
-            cell.textField?.textColor = .labelColor
+            cell.textField?.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .medium)
+            cell.textField?.textColor = Studio.ink
+            cell.imageView?.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: nil)
+            cell.imageView?.contentTintColor = Studio.accent
             cell.toolTip = url.path
             return cell
         }
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        let rows = IndexSet(integersIn: 0..<places.count)
+        sidebar.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
     }
 
     private func sidebarCell(_ tableView: NSTableView, identifier: String, symbol: String?) -> NSTableCellView {
@@ -979,11 +1063,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         items.append(contentsOf: favorites.map(SidebarItem.favorite))
         items.append(contentsOf: [
             .header("위치"),
-            .place(title: "홈", url: home, symbol: "house"),
+            .place(title: "홈", url: home, symbol: "house.fill"),
             .place(title: "데스크탑", url: home.appendingPathComponent("Desktop"), symbol: "desktopcomputer"),
-            .place(title: "문서", url: home.appendingPathComponent("Documents"), symbol: "doc.text"),
-            .place(title: "다운로드", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle"),
-            .place(title: "응용 프로그램", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "square.grid.2x2"),
+            .place(title: "문서", url: home.appendingPathComponent("Documents"), symbol: "doc.text.fill"),
+            .place(title: "다운로드", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle.fill"),
+            .place(title: "응용 프로그램", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "square.grid.2x2.fill"),
         ])
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsEjectableKey]
         let volumes = fm.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
@@ -995,7 +1079,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             let values = try? volume.resourceValues(forKeys: Set(keys))
             if values?.volumeIsBrowsable == false { continue }
             let name = values?.volumeName ?? volume.lastPathComponent
-            let symbol = values?.volumeIsEjectable == true ? "externaldrive" : "internaldrive"
+            let symbol = values?.volumeIsEjectable == true ? "externaldrive.fill" : "internaldrive.fill"
             disks.append(.place(title: name, url: volume, symbol: symbol))
         }
         if !disks.isEmpty {

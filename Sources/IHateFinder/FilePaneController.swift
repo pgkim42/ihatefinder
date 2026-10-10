@@ -29,6 +29,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
     private let openWithMenu = NSMenu()
     private let scroll = NSScrollView()
+    private let card = StudioCanvas()
     private let loadStatus = NSTextField(labelWithString: "")
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -68,27 +69,26 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     override func loadView() {
-        let root = NSView()
-        pathField.isEditable = true
-        pathField.isSelectable = true
-        pathField.isBezeled = true
-        pathField.bezelStyle = .roundedBezel
-        pathField.font = .systemFont(ofSize: 13)
+        let root = StudioCanvas()
+        StudioField.stylePath(pathField, placeholder: "경로를 입력하거나 Command-L을 누르세요")
         pathField.lineBreakMode = .byTruncatingMiddle
         pathField.cell?.lineBreakMode = .byTruncatingMiddle
         pathField.delegate = self
         pathField.target = self
         pathField.action = #selector(commitPath)
-        pathField.placeholderString = "경로를 입력하거나 Command-L을 누르세요"
 
         table.pane = self
         table.headerView = NSTableHeaderView()
         table.usesAlternatingRowBackgroundColors = false
+        table.selectionHighlightStyle = .none
+        table.focusRingType = .none
+        table.backgroundColor = Studio.card
+        table.gridStyleMask = []
         table.allowsMultipleSelection = true
         table.allowsEmptySelection = true
         table.allowsColumnReordering = false
-        table.rowHeight = 24
-        table.intercellSpacing = NSSize(width: 3, height: 2)
+        table.rowHeight = 32
+        table.intercellSpacing = NSSize(width: 0, height: 0)
         table.doubleAction = #selector(openSelection)
         table.target = self
         table.dataSource = self
@@ -103,8 +103,11 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
             tableColumn.title = column.title
             tableColumn.width = column.width
-            tableColumn.minWidth = column.rawValue == SortColumn.name.rawValue ? 180 : 60
+            tableColumn.minWidth = column.rawValue == SortColumn.name.rawValue ? 140 : 64
             tableColumn.sortDescriptorPrototype = NSSortDescriptor(key: column.rawValue, ascending: true)
+            let header = StudioHeaderCell(textCell: column.title)
+            header.alignment = column.rawValue == SortColumn.size.rawValue ? .right : .left
+            tableColumn.headerCell = header
             table.addTableColumn(tableColumn)
         }
         table.sortDescriptors = [NSSortDescriptor(key: session.sortColumn.rawValue, ascending: session.ascending)]
@@ -113,16 +116,20 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = true
         scroll.autohidesScrollers = true
-        scroll.borderType = .lineBorder
+        scroll.scrollerStyle = .overlay
+        scroll.borderType = .noBorder
         scroll.drawsBackground = true
-        loadStatus.font = .systemFont(ofSize: 11, weight: .regular)
-        loadStatus.textColor = .secondaryLabelColor
+        scroll.backgroundColor = Studio.card
+        scroll.wantsLayer = true
+        scroll.layer?.cornerRadius = 16
+        scroll.layer?.masksToBounds = true
+        scroll.contentView.drawsBackground = false
+        loadStatus.font = .systemFont(ofSize: 11, weight: .medium)
+        loadStatus.textColor = Studio.muted
         loadStatus.lineBreakMode = .byTruncatingMiddle
         loadStatus.translatesAutoresizingMaskIntoConstraints = false
 
-        filterField.placeholderString = "이 폴더에서 이름 거르기"
-        filterField.font = .systemFont(ofSize: 13)
-        filterField.sendsSearchStringImmediately = true
+        StudioField.styleSearch(filterField, placeholder: "이 폴더에서 이름 거르기")
         filterField.delegate = self
         filterField.target = self
         filterField.action = #selector(filterChanged)
@@ -131,22 +138,31 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         pathField.translatesAutoresizingMaskIntoConstraints = false
         filterField.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        card.fill = Studio.hairline
+        card.cornerRadius = 18
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(scroll)
         root.addSubview(pathField)
         root.addSubview(filterField)
-        root.addSubview(scroll)
+        root.addSubview(card)
         root.addSubview(loadStatus)
         NSLayoutConstraint.activate([
             pathField.topAnchor.constraint(equalTo: root.topAnchor, constant: 12),
             pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             pathField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            pathField.heightAnchor.constraint(equalToConstant: 32),
             filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            scroll.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 8),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            scroll.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -6),
-            loadStatus.leadingAnchor.constraint(equalTo: scroll.leadingAnchor, constant: 2),
-            loadStatus.trailingAnchor.constraint(equalTo: scroll.trailingAnchor, constant: -2),
+            card.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 10),
+            card.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
+            card.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
+            card.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -6),
+            scroll.topAnchor.constraint(equalTo: card.topAnchor, constant: 2),
+            scroll.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 2),
+            scroll.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -2),
+            scroll.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -2),
+            loadStatus.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 4),
+            loadStatus.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -4),
             loadStatus.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
         ])
         let filterTop = filterField.topAnchor.constraint(equalTo: pathField.bottomAnchor, constant: 0)
@@ -154,7 +170,9 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         filterTopConstraint = filterTop
         filterHeightConstraint = filterHeight
         NSLayoutConstraint.activate([filterTop, filterHeight])
+        root.onAppearanceChange = { [weak self] in self?.applyChrome() }
         view = root
+        applyChrome()
         show()
         session.reload()
     }
@@ -164,7 +182,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         if case .failed = session.loadState {
             loadStatus.textColor = .systemRed
         } else {
-            loadStatus.textColor = .secondaryLabelColor
+            loadStatus.textColor = Studio.muted
         }
         if editingRow < 0 && table.editedRow < 0 {
             let selection = editingSelection ?? Set(selectedURLs())
@@ -223,16 +241,22 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         }
     }
 
+    private var looksFocused = false
+
     func setFocusedLook(_ focused: Bool) {
+        looksFocused = focused
+        applyChrome()
+    }
+
+    private func applyChrome() {
         scroll.wantsLayer = true
-        scroll.borderType = .lineBorder
-        if focused {
-            scroll.layer?.borderWidth = 1.0
-            scroll.layer?.borderColor = NSColor.controlAccentColor.cgColor
-        } else {
-            scroll.layer?.borderWidth = 1.0
-            scroll.layer?.borderColor = NSColor.separatorColor.cgColor
-        }
+        scroll.layer?.cornerRadius = 15
+        scroll.layer?.masksToBounds = true
+        scroll.backgroundColor = Studio.card
+        table.backgroundColor = Studio.card
+        card.fill = looksFocused ? Studio.accent : Studio.hairline
+        card.needsDisplay = true
+        view.needsDisplay = true
     }
 
     func selectedURLs() -> [URL] {
@@ -329,7 +353,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         _ = view
         filterField.isHidden = false
         filterTopConstraint?.constant = 8
-        filterHeightConstraint?.constant = 28
+        filterHeightConstraint?.constant = 32
         view.window?.makeFirstResponder(filterField)
         filterField.currentEditor()?.selectAll(nil)
         browser?.focus(self)
@@ -538,6 +562,17 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         displayedEntries.count
     }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let rowView = tableView.makeView(
+            withIdentifier: NSUserInterfaceItemIdentifier("studio-file-row"),
+            owner: self
+        ) as? StudioRowView ?? StudioRowView()
+        rowView.identifier = NSUserInterfaceItemIdentifier("studio-file-row")
+        rowView.surface = Studio.card
+        rowView.horizontalInset = 6
+        return rowView
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard let tableColumn, displayedEntries.indices.contains(row) else { return nil }
         let entry = displayedEntries[row]
@@ -556,8 +591,12 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         case nil:
             break
         }
+        let name = column == .name
+        cell.textField?.textColor = name ? Studio.ink : Studio.muted
+        cell.textField?.font = name ? Studio.nameFont : Studio.metaFont
+        cell.textField?.alignment = column == .size ? .right : .left
         let cut = browser?.isCut(entry.url) ?? false
-        cell.alphaValue = cut ? 0.4 : 1
+        cell.alphaValue = cut ? 0.45 : 1
         return cell
     }
 
@@ -813,7 +852,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let text = NSTextField()
         text.isBezeled = false
         text.drawsBackground = false
-        text.font = .systemFont(ofSize: 13, weight: .regular)
+        text.font = column.identifier.rawValue == SortColumn.name.rawValue ? Studio.nameFont : Studio.metaFont
         text.lineBreakMode = .byTruncatingTail
         text.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text)
@@ -828,12 +867,12 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             cell.addSubview(image)
             cell.imageView = image
             NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 6),
+                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                image.widthAnchor.constraint(equalToConstant: 16),
-                image.heightAnchor.constraint(equalToConstant: 16),
-                text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -6),
+                image.widthAnchor.constraint(equalToConstant: 18),
+                image.heightAnchor.constraint(equalToConstant: 18),
+                text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8),
+                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
             ])
         } else {
@@ -854,9 +893,9 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     private static let columns = [
-        Column(rawValue: SortColumn.name.rawValue, title: "이름", width: 280),
-        Column(rawValue: SortColumn.modified.rawValue, title: "수정한 날짜", width: 160),
-        Column(rawValue: SortColumn.kind.rawValue, title: "종류", width: 120),
-        Column(rawValue: SortColumn.size.rawValue, title: "크기", width: 90),
+        Column(rawValue: SortColumn.name.rawValue, title: "이름", width: 220),
+        Column(rawValue: SortColumn.modified.rawValue, title: "수정한 날짜", width: 148),
+        Column(rawValue: SortColumn.kind.rawValue, title: "종류", width: 100),
+        Column(rawValue: SortColumn.size.rawValue, title: "크기", width: 88),
     ]
 }

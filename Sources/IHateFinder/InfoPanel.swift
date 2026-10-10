@@ -39,22 +39,24 @@ final class InfoPanel {
     static func present(for url: URL, in window: NSWindow?) -> NSAlert {
         let alert = NSAlert()
         alert.messageText = url.lastPathComponent
+        alert.icon = NSWorkspace.shared.icon(forFile: url.path)
         alert.addButton(withTitle: "닫기")
-        let text = NSTextField(wrappingLabelWithString: "읽는 중…")
-        text.isSelectable = true
-        text.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        text.textColor = .labelColor
-        text.preferredMaxLayoutWidth = 480
-        alert.accessoryView = text
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        fill(stack, with: [("상태", "읽는 중…")])
+        alert.accessoryView = stack
         DispatchQueue.global(qos: .userInitiated).async {
             let model = InfoModel.make(url: url)
             DispatchQueue.main.async {
-                guard let model else {
-                    text.stringValue = "정보를 읽지 못했습니다.\n\(url.path)"
-                    return
+                if let model {
+                    fill(stack, with: rows(for: model))
+                } else {
+                    fill(stack, with: [("경로", url.path), ("상태", "정보를 읽지 못했습니다.")])
                 }
-                text.stringValue = rows(for: model).map { "\($0.0): \($0.1)" }.joined(separator: "\n")
-                text.sizeToFit()
             }
         }
         if let window {
@@ -63,5 +65,29 @@ final class InfoPanel {
             alert.runModal()
         }
         return alert
+    }
+
+    private static func fill(_ stack: NSStackView, with rows: [(String, String)]) {
+        for view in stack.arrangedSubviews {
+            stack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        for (label, value) in rows {
+            let key = NSTextField(labelWithString: label)
+            key.font = Studio.headerFont
+            key.textColor = Studio.muted
+            key.alignment = .right
+            key.widthAnchor.constraint(equalToConstant: 72).isActive = true
+            let detail = NSTextField(wrappingLabelWithString: value)
+            detail.font = .systemFont(ofSize: 12, weight: .regular)
+            detail.textColor = Studio.ink
+            detail.isSelectable = true
+            detail.preferredMaxLayoutWidth = 360
+            let row = NSStackView(views: [key, detail])
+            row.orientation = .horizontal
+            row.alignment = .firstBaseline
+            row.spacing = 12
+            stack.addArrangedSubview(row)
+        }
     }
 }
