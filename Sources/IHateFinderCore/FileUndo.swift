@@ -51,6 +51,13 @@ public enum UndoItem: Equatable {
 public struct UndoRecord: Equatable {
     public let title: String
     public let items: [UndoItem]
+    public let operationID: UUID?
+
+    public init(title: String, items: [UndoItem], operationID: UUID? = nil) {
+        self.title = title
+        self.items = items
+        self.operationID = operationID
+    }
 }
 
 public struct FileUndoItemResult: Equatable {
@@ -77,6 +84,8 @@ public struct FileUndoItemResult: Equatable {
     /// Paths that now hold restored items; the app reveals them.
     public let restored: [URL]
     public let message: String?
+    /// Items preserved in the Trash or at a recovery path, separate from revealed files.
+    public var recoveryLocations: [URL] = []
 
     public var isUndone: Bool { status == .undone }
 }
@@ -194,7 +203,7 @@ extension FileOps {
         let retryItems = zip(record.items, results.reversed()).compactMap { item, result in
             canRetry(item, after: result.status) ? item : nil
         }
-        let retry = retryItems.isEmpty ? nil : UndoRecord(title: record.title, items: retryItems)
+        let retry = retryItems.isEmpty ? nil : UndoRecord(title: record.title, items: retryItems, operationID: record.operationID)
         return FileUndoReport(title: record.title, items: results, retryRecord: retry)
     }
 
@@ -219,12 +228,14 @@ extension FileOps {
         if let status = presenceProblem(dest, id: id) ?? replacedProblem(replaced) {
             return result(dest, status)
         }
+        let trashed: URL?
         do {
-            _ = try moveToTrash(dest)
+            trashed = try moveToTrash(dest)
         } catch {
             return result(dest, .failed(error.localizedDescription), "휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
         }
-        return finish(dest, replaced: replaced, note: "새 항목은 휴지통으로 보냈습니다.")
+        return finish(dest, replaced: replaced, note: "새 항목은 휴지통으로 보냈습니다.",
+                      recoveryLocations: trashed.map { [$0] } ?? [])
     }
 
     private func undoMoved(
@@ -238,6 +249,7 @@ extension FileOps {
         }
         if let status = replacedProblem(replaced) { return result(to, status) }
         if let status = slotProblem(from) { return result(to, status) }
+        var recoveryLocations = same ? [] : sourceTrash.map { [$0.trashURL] } ?? []
         do {
             if same {
                 try fm.moveItem(at: to, to: from)
@@ -253,27 +265,29 @@ extension FileOps {
                     }
                     message += "\n옮긴 항목은 \(to.path), 이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다."
                     return result(to, partial ? .partiallyUndone : .failed(message), message,
-                                  restored: copied.status == .completed ? [from] : [])
+                                  restored: copied.status == .completed ? [from] : [],
+                                  recoveryLocations: recoveryLocations + (copied.recovery?.locations ?? []))
                 }
                 if let status = presenceProblem(to, id: id) {
                     return result(from, .partiallyUndone,
                                   "현재 내용을 \(from.path)에 복사했지만 옮긴 자리의 항목을 확인할 수 없어 휴지통으로 보내지 않았습니다. \(Self.message(for: status, url: to) ?? "")\n이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다.",
-                                  restored: [from])
+                                  restored: [from], recoveryLocations: recoveryLocations)
                 }
                 do {
-                    _ = try moveToTrash(to)
+                    if let trashed = try moveToTrash(to) { recoveryLocations.append(trashed) }
                 } catch {
                     var message = "‘\(to.lastPathComponent)’: 현재 내용을 \(from.path)에 되돌렸지만 옮겨 간 항목을 휴지통으로 보내지 못해 \(to.path)에 남아 있습니다: \(error.localizedDescription)\n이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다."
                     if let trash = replaced?.trash {
                         message += "\n바꾸기로 휴지통에 간 기존 항목은 제자리로 돌리지 않았고 휴지통(\(trash.trashURL.path))에 남아 있습니다."
                     }
-                    return result(from, .partiallyUndone, message, restored: [from])
+                    return result(from, .partiallyUndone, message, restored: [from],
+                                  recoveryLocations: recoveryLocations + (replaced?.trash.map { [$0.trashURL] } ?? []))
                 }
             }
         } catch {
             return result(to, .failed(error.localizedDescription), "되돌리지 못했습니다: \(error.localizedDescription)")
         }
-        return finish(from, replaced: replaced, restoredBase: [from], note: nil)
+        return finish(from, replaced: replaced, restoredBase: [from], note: nil, recoveryLocations: recoveryLocations)
     }
 
     private func undoRenamed(from: URL, to: URL, id: FileID?, replaced: ReplacedInfo?) -> FileUndoItemResult {
@@ -316,26 +330,26 @@ extension FileOps {
 
     /// Second half of undoing a replace: puts the old item back once the new one is out of the way.
     private func finish(
-        _ url: URL, replaced: ReplacedInfo?, restoredBase: [URL] = [], note: String?
+        _ url: URL, replaced: ReplacedInfo?, restoredBase: [URL] = [], note: String?, recoveryLocations: [URL] = []
     ) -> FileUndoItemResult {
         guard let replaced, let trash = replaced.trash else {
-            return result(url, .undone, note, restored: restoredBase)
+            return result(url, .undone, note, restored: restoredBase, recoveryLocations: recoveryLocations)
         }
         let name = "‘\(replaced.originalPath.lastPathComponent)’"
         if let status = slotProblem(replaced.originalPath) {
             let reason = status == .occupied ? "그 자리에 다른 항목이 있어" : "그 자리의 폴더가 없어"
             return result(url, .partiallyUndone,
                           "\(name): 되돌렸지만 \(reason) 바꾸기로 휴지통에 간 기존 항목은 휴지통(\(trash.trashURL.path))에 남아 있습니다.",
-                          restored: restoredBase)
+                          restored: restoredBase, recoveryLocations: recoveryLocations + [trash.trashURL])
         }
         do {
             try fm.moveItem(at: trash.trashURL, to: replaced.originalPath)
         } catch {
             return result(url, .partiallyUndone,
                           "\(name): 되돌렸지만 기존 항목을 휴지통에서 꺼내지 못해 휴지통(\(trash.trashURL.path))에 남아 있습니다: \(error.localizedDescription)",
-                          restored: restoredBase)
+                          restored: restoredBase, recoveryLocations: recoveryLocations + [trash.trashURL])
         }
-        return result(url, .undone, note, restored: restoredBase + [replaced.originalPath])
+        return result(url, .undone, note, restored: restoredBase + [replaced.originalPath], recoveryLocations: recoveryLocations)
     }
 
     // MARK: Preconditions
@@ -389,8 +403,11 @@ extension FileOps {
         return directoryExists(url.deletingLastPathComponent()) ? nil : .missing
     }
 
-    private func result(_ url: URL, _ status: Status, _ message: String? = nil, restored: [URL] = []) -> FileUndoItemResult {
-        FileUndoItemResult(url: url, status: status, restored: restored, message: message ?? Self.message(for: status, url: url))
+    private func result(_ url: URL, _ status: Status, _ message: String? = nil, restored: [URL] = [],
+                        recoveryLocations: [URL] = []) -> FileUndoItemResult {
+        var value = FileUndoItemResult(url: url, status: status, restored: restored, message: message ?? Self.message(for: status, url: url))
+        value.recoveryLocations = recoveryLocations
+        return value
     }
 
     private static func message(for status: Status, url: URL) -> String? {

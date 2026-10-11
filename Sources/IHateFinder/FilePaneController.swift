@@ -723,11 +723,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     @objc func makeFolder() {
         let directory = displayedURL
         let ops = session.ops
-        browser?.runReporting("폴더를 만들지 못했습니다.", work: {
+        browser?.runReporting("폴더를 만들지 못했습니다.", operation: .createFolder,
+                              items: [FileOperationItem(destination: directory, status: .running)], work: {
             let url = try ops.createFolder(in: directory)
             return (url, ops.undoRecord(created: url))
-        }, completion: { [weak self] created in
-            self?.browser?.recordUndo(created.1)
+        }, completion: { [weak self] created, operationID in
+            self?.browser?.finishOperation(operationID, items: [FileOperationItem(destination: created.0, status: .completed)])
+            self?.browser?.recordUndo(created.1, operationID: operationID)
             self?.revealAfterReload(created.0, rename: true)
         })
     }
@@ -735,11 +737,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     @objc func makeTextFile() {
         let directory = displayedURL
         let ops = session.ops
-        browser?.runReporting("파일을 만들지 못했습니다.", work: {
+        browser?.runReporting("파일을 만들지 못했습니다.", operation: .createFile,
+                              items: [FileOperationItem(destination: directory, status: .running)], work: {
             let url = try ops.createTextFile(in: directory)
             return (url, ops.undoRecord(created: url))
-        }, completion: { [weak self] created in
-            self?.browser?.recordUndo(created.1)
+        }, completion: { [weak self] created, operationID in
+            self?.browser?.finishOperation(operationID, items: [FileOperationItem(destination: created.0, status: .completed)])
+            self?.browser?.recordUndo(created.1, operationID: operationID)
             self?.revealAfterReload(created.0, rename: true)
         })
     }
@@ -748,11 +752,12 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let urls = selectedURLs()
         guard !urls.isEmpty else { return }
         let ops = session.ops
-        browser?.runReporting("휴지통으로 보내지 못했습니다.", work: {
+        browser?.runReporting("휴지통으로 보내지 못했습니다.", operation: .trash,
+                              items: urls.map { FileOperationItem(source: $0, status: .running) }, work: {
             let report = ops.trash(urls: urls)
             return (report, ops.undoRecord(trash: report))
-        }, completion: { [weak browser] result in
-            browser?.finishTrash(result.0, record: result.1)
+        }, completion: { [weak browser] result, operationID in
+            browser?.finishTrash(result.0, record: result.1, operationID: operationID)
         })
     }
 
@@ -852,13 +857,22 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         guard newName != entry.name else { return }
         let url = entry.url
         let ops = session.ops
-        browser?.runReporting("이름을 바꾸지 못했습니다.", work: {
+        let destination = url.deletingLastPathComponent().appendingPathComponent(newName.trimmingCharacters(in: .whitespacesAndNewlines))
+        browser?.runReporting("이름을 바꾸지 못했습니다.", operation: .rename,
+                              items: [FileOperationItem(source: url, destination: destination, status: .running)], work: {
             let outcome = try ops.rename(url: url, to: newName, resolve: { name in
                 self.browser?.resolveConflict(name) ?? .skip
             })
-            return ops.undoRecord(rename: outcome, from: url)
-        }, completion: { [weak browser] record in
-            browser?.recordUndo(record)
+            return (outcome, ops.undoRecord(rename: outcome, from: url))
+        }, completion: { [weak browser] result, operationID in
+            let item: FileOperationItem
+            switch result.0 {
+            case .renamed(let renamed): item = BrowserWindowController.historyItem(renamed)
+            case .skipped: item = FileOperationItem(source: url, destination: destination, status: .skipped)
+            case .unchanged: item = FileOperationItem(source: url, destination: url, status: .skipped, message: "이름이 바뀌지 않았습니다.")
+            }
+            browser?.finishOperation(operationID, items: [item])
+            browser?.recordUndo(result.1, operationID: operationID)
         })
     }
 

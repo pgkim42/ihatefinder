@@ -43,9 +43,11 @@ public struct FileEntry: Equatable {
 
 public struct FileOpError: Error, LocalizedError, Equatable {
     public var message: String
+    public var transferResult: FileTransferItemResult?
 
-    public init(_ message: String) {
+    public init(_ message: String, transferResult: FileTransferItemResult? = nil) {
         self.message = message
+        self.transferResult = transferResult
     }
 
     public var errorDescription: String? { message }
@@ -366,7 +368,7 @@ public struct FileOps {
                 message += "\n\(recovery.message)"
                 for location in recovery.locations { message += "\n\(location.path)" }
             }
-            throw FileOpError(message)
+            throw FileOpError(message, transferResult: result)
         }
         return .renamed(result)
     }

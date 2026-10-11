@@ -33,7 +33,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private(set) var placesRevision = 0
     private var transferCancellation: FileTransferCancellation?
     private var rememberedChoice: NameConflict?
+    /// Supplies the user's conflict choice in tests; file operations still run normally.
+    var conflictResolver: ((String) -> NameConflict)?
     let undoJournal = FileUndoJournal()
+    var operationHistory: FileOperationHistory
+    let historyWindowID = UUID()
+    var historyWindowTitle = ""
     /// Set on the main thread before any alert, so tests can assert on the outcome.
     private(set) var lastTrashReport: FileTrashReport?
     private(set) var lastUndoReport: FileUndoReport?
@@ -52,9 +57,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         pasteboard: NSPasteboard = .general,
         clipboard: FileClipboard? = nil,
         makeOps: @escaping () -> FileOps = { FileOps(cloneOnSameVolume: true) },
-        initialURLs: (left: URL, right: URL)? = nil
+        initialURLs: (left: URL, right: URL)? = nil,
+        operationHistory: FileOperationHistory? = nil
     ) {
         self.workspaceStore = workspaceStore
+        self.operationHistory = operationHistory ?? FileOperationHistory()
+        historyWindowTitle = String(historyWindowID.uuidString.prefix(8))
         self.favoriteStore = favoriteStore ?? (initialURLs == nil ? FavoritePlacesStore() : nil)
         favoritePlaces = self.favoriteStore?.load() ?? []
         self.clipboard = clipboard ?? FileClipboard(pasteboard: pasteboard)
@@ -300,7 +308,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     /// failed run delivers its value to `completion` on main before the panes reload; an
     /// error shows an alert after the reload. Returns false when another operation is running.
     @discardableResult
-    func runReporting<T>(_ failure: String, work: @escaping () throws -> T, completion: @escaping (T) -> Void) -> Bool {
+    func runReporting<T>(_ failure: String, operation: FileOperationKind? = nil, items: [FileOperationItem] = [],
+                         parentID: UUID? = nil, work: @escaping () throws -> T,
+                         completion: @escaping (T, UUID?) -> Void) -> Bool {
         guard !busy else {
             alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
             return false
@@ -308,15 +318,28 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         busy = true
         rememberedChoice = nil
         status.stringValue = "파일 작업 중…"
+        let operationID = operation.map { beginOperation($0, items: items, parentID: parentID) }
         DispatchQueue.global(qos: .userInitiated).async {
             let result = Result { try work() }
             DispatchQueue.main.async {
                 self.busy = false
                 switch result {
                 case .success(let value):
-                    completion(value)
+                    completion(value, operationID)
                     self.reloadPanes()
                 case .failure(let error):
+                    if let operationID {
+                        let failedItems: [FileOperationItem]
+                        if let result = (error as? FileOpError)?.transferResult {
+                            failedItems = [Self.historyItem(result)]
+                        } else {
+                            failedItems = items.map {
+                                FileOperationItem(source: $0.source, destination: $0.destination, status: .failed,
+                                                  message: self.failureMessage(error, failure))
+                            }
+                        }
+                        self.finishOperation(operationID, items: failedItems)
+                    }
                     self.reloadPanes()
                     self.alert(self.failureMessage(error, failure))
                 }
@@ -326,16 +349,20 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func run(_ failure: String, after: (() -> Void)? = nil, work: @escaping () throws -> Void) {
-        runReporting(failure, work: work, completion: { after?() })
+        runReporting(failure, work: work, completion: { _, _ in after?() })
     }
 
-    func recordUndo(_ record: UndoRecord?) {
-        if let record { undoJournal.push(record) }
+    func recordUndo(_ record: UndoRecord?, operationID: UUID? = nil) {
+        if let record {
+            undoJournal.push(UndoRecord(title: record.title, items: record.items,
+                                        operationID: operationID ?? record.operationID))
+        }
     }
 
-    func finishTrash(_ report: FileTrashReport, record: UndoRecord?) {
+    func finishTrash(_ report: FileTrashReport, record: UndoRecord?, operationID: UUID? = nil) {
         lastTrashReport = report
-        recordUndo(record)
+        finishOperation(operationID, items: report.items.map(Self.historyItem))
+        recordUndo(record, operationID: operationID)
         if let message = report.failureMessage { alert(message) }
     }
 
@@ -347,9 +374,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         }
         guard let record = undoJournal.popLast() else { return }
         let ops = focused.session.ops
-        runReporting("되돌리지 못했습니다.", work: { ops.undo(record) }, completion: { [weak self] report in
+        runReporting("되돌리지 못했습니다.", operation: .undo, items: record.items.reversed().map(Self.historyItem),
+                     parentID: record.operationID, work: { ops.undo(record) }, completion: { [weak self] report, operationID in
             guard let self else { return }
             self.lastUndoReport = report
+            self.finishOperation(operationID, items: Self.historyItems(report, record: record))
             self.recordUndo(report.retryRecord)
             for url in report.restoredURLs {
                 let folder = url.deletingLastPathComponent().standardizedFileURL.path
@@ -382,6 +411,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let ops = focused.session.ops
         let snapshot = clipboardSnapshot ?? clipboard.snapshot()
         let cancellation = beginCancellableJob(status: moving ? "옮기는 중…" : "복사하는 중…")
+        let operationID = beginOperation(moving ? .move : .copy, items: urls.map {
+            FileOperationItem(source: $0, destination: destination.appendingPathComponent($0.lastPathComponent), status: .running)
+        })
         let progress: (FileTransferProgress) -> Void = { [weak self] progress in
             DispatchQueue.main.async {
                 guard let self, self.transferCancellation === cancellation else { return }
@@ -399,7 +431,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             record = ops.undoRecord(transfer: report, moving: moving)
             DispatchQueue.main.async {
                 self.endCancellableJob()
-                self.recordUndo(record)
+                self.finishOperation(operationID, items: report.items.map(Self.historyItem))
+                self.recordUndo(record, operationID: operationID)
                 if moving, let snapshot {
                     self.clipboard.consume(report.completedSources, from: snapshot)
                     self.publishClipboardChange()
@@ -442,22 +475,27 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let ops = focused.session.ops
         let runner = compressRunner
         let cancellation = beginCancellableJob(status: "압축하는 중… \(url.lastPathComponent)")
+        let operationID = beginOperation(.compress, items: [FileOperationItem(source: url, status: .running)])
         DispatchQueue.global(qos: .userInitiated).async {
             let result = ops.compress(url, cancellation: cancellation, runner: runner)
             let record: UndoRecord?
             if case .success(let zip) = result { record = ops.undoRecord(compressed: zip) } else { record = nil }
             DispatchQueue.main.async {
                 self.endCancellableJob()
-                self.recordUndo(record)
+                self.recordUndo(record, operationID: operationID)
                 self.lastCompressResult = result
                 switch result {
                 case .success(let zip):
+                    self.finishOperation(operationID, items: [FileOperationItem(source: url, destination: zip, status: .completed)])
                     let folder = zip.deletingLastPathComponent().standardizedFileURL.path
                     for pane in [self.left, self.right] where pane.session.url.path == folder {
                         pane.revealAfterReload(zip, rename: false)
                     }
                     self.reloadPanes()
                 case .failure(let error):
+                    self.finishOperation(operationID, items: [
+                        FileOperationItem(source: url, status: error == .compressCancelled ? .cancelled : .failed, message: error.message)
+                    ])
                     self.reloadPanes()
                     if error != .compressCancelled { self.alert(error.message) }
                 }
@@ -956,6 +994,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     private func askConflict(_ name: String) -> NameConflict {
         if let rememberedChoice { return rememberedChoice }
+        if let conflictResolver { return conflictResolver(name) }
         let alert = NSAlert()
         alert.messageText = "같은 이름이 있습니다"
         alert.informativeText = name

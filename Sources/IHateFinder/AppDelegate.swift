@@ -7,6 +7,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private weak var lastActiveBrowser: BrowserWindowController?
     private let clipboard: FileClipboard
     private let makeBrowser: (FileClipboard) -> BrowserWindowController
+    let operationHistory = FileOperationHistory()
+    private(set) var historyWindowController: FileOperationHistoryWindowController?
+    private var nextWindowNumber = 1
 
     init(
         pasteboard: NSPasteboard = .general,
@@ -16,6 +19,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let workspaceStore = WorkspaceStore()
         self.makeBrowser = makeBrowser ?? { BrowserWindowController(workspaceStore: workspaceStore, clipboard: $0) }
         super.init()
+        operationHistory.onChange = { [weak self] in
+            self?.historyWindowController?.reloadHistory()
+        }
     }
 
     var activeBrowser: BrowserWindowController? {
@@ -30,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @discardableResult
     func createBrowser() -> BrowserWindowController {
         let browser = makeBrowser(clipboard)
+        browser.operationHistory = operationHistory
+        browser.historyWindowTitle = String(nextWindowNumber)
+        nextWindowNumber += 1
         browsers.append(browser)
         lastActiveBrowser = browser
         browser.shouldSaveWorkspace = { [weak self, weak browser] in
@@ -46,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             self.browsers.removeAll { $0 === browser }
             if self.lastActiveBrowser === browser { self.lastActiveBrowser = self.browsers.last }
+            if self.browsers.isEmpty { self.historyWindowController?.close() }
         }
         browser.showWindow(nil)
         browser.window?.makeKeyAndOrderFront(nil)
@@ -54,6 +64,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func newWindow(_ sender: Any?) {
         createBrowser()
+    }
+
+    @objc func showOperationHistory(_ sender: Any?) {
+        if historyWindowController == nil {
+            historyWindowController = FileOperationHistoryWindowController(history: operationHistory)
+        }
+        historyWindowController?.reloadHistory()
+        historyWindowController?.showWindow(nil)
+        historyWindowController?.window?.makeKeyAndOrderFront(nil)
     }
     /// Requests that arrived before the window existed. Drained once after `showWindow`.
     private(set) var pendingOpens: [OpenRequest] = []
@@ -174,6 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("숨김 파일", #selector(BrowserWindowController.toggleHidden), ".", [.command, .shift]),
             item("양쪽 창", #selector(BrowserWindowController.toggleDual), "", []),
             item("축소판 보기", #selector(BrowserWindowController.toggleThumbnails), "", []),
+            .separator(),
+            item("파일 작업 기록", #selector(showOperationHistory(_:)), "", []),
         ]))
         main.addItem(menu("창", [
             item("닫기", #selector(NSWindow.performClose(_:)), "w", .command),
@@ -196,7 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func item(_ title: String, _ action: Selector, _ key: String, _ mask: NSEvent.ModifierFlags) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = mask
-        if action == #selector(newWindow(_:)) { item.target = self }
+        if action == #selector(newWindow(_:)) || action == #selector(showOperationHistory(_:)) { item.target = self }
         return item
     }
 }
