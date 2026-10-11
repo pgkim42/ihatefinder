@@ -1,7 +1,60 @@
 import AppKit
+import IHateFinderCore
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var browser: BrowserWindowController?
+    private(set) var browsers: [BrowserWindowController] = []
+    private weak var lastActiveBrowser: BrowserWindowController?
+    private let clipboard: FileClipboard
+    private let makeBrowser: (FileClipboard) -> BrowserWindowController
+
+    init(
+        pasteboard: NSPasteboard = .general,
+        makeBrowser: ((FileClipboard) -> BrowserWindowController)? = nil
+    ) {
+        clipboard = FileClipboard(pasteboard: pasteboard)
+        let workspaceStore = WorkspaceStore()
+        self.makeBrowser = makeBrowser ?? { BrowserWindowController(workspaceStore: workspaceStore, clipboard: $0) }
+        super.init()
+    }
+
+    var activeBrowser: BrowserWindowController? {
+        for window in [NSApp.keyWindow, NSApp.mainWindow] {
+            if let window, let browser = browsers.first(where: { $0.window === window }) {
+                return browser
+            }
+        }
+        return lastActiveBrowser ?? browsers.last
+    }
+
+    @discardableResult
+    func createBrowser() -> BrowserWindowController {
+        let browser = makeBrowser(clipboard)
+        browsers.append(browser)
+        lastActiveBrowser = browser
+        browser.shouldSaveWorkspace = { [weak self, weak browser] in
+            guard let self, let browser else { return false }
+            return self.browsers.contains(where: { $0 === browser }) && self.activeBrowser === browser
+        }
+        browser.onBecameActive = { [weak self, weak browser] in
+            self?.lastActiveBrowser = browser
+        }
+        browser.onClose = { [weak self, weak browser] in
+            guard let self, let browser else { return }
+            if self.activeBrowser === browser || self.browsers.count == 1 {
+                browser.saveWorkspace(force: true)
+            }
+            self.browsers.removeAll { $0 === browser }
+            if self.lastActiveBrowser === browser { self.lastActiveBrowser = self.browsers.last }
+        }
+        browser.showWindow(nil)
+        browser.window?.makeKeyAndOrderFront(nil)
+        return browser
+    }
+
+    @objc func newWindow(_ sender: Any?) {
+        createBrowser()
+    }
     /// Requests that arrived before the window existed. Drained once after `showWindow`.
     private(set) var pendingOpens: [OpenRequest] = []
     private let isRepro = CommandLine.arguments.contains("--repro-focus")
@@ -31,7 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func route(_ request: OpenRequest) {
-        if let browser {
+        if let browser = activeBrowser {
             browser.handleOpen(request)
         } else {
             pendingOpens.append(request)
@@ -47,11 +100,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         let repro = isRepro
-        let browser = repro
-            ? BrowserWindowController(workspaceStore: nil, pasteboard: NSPasteboard(name: .init("IHateFinder.repro.\(UUID().uuidString)")))
-            : BrowserWindowController()
-        self.browser = browser
-        browser.showWindow(nil)
+        let browser: BrowserWindowController
+        if repro {
+            browser = BrowserWindowController(workspaceStore: nil, pasteboard: NSPasteboard(name: .init("IHateFinder.repro.\(UUID().uuidString)")))
+            browser.showWindow(nil)
+        } else {
+            browser = createBrowser()
+        }
         drainPendingOpens(into: browser.handleOpen)
         if repro {
             let report = browser.runFocusRepro()
@@ -67,14 +122,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        browser?.canClose() == false ? .terminateCancel : .terminateNow
+        if let busyBrowser = browsers.first(where: \.isFileOperationRunning) {
+            busyBrowser.window?.makeKeyAndOrderFront(nil)
+            _ = busyBrowser.canClose()
+            return .terminateCancel
+        }
+        return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        browser?.saveWorkspace()
+        activeBrowser?.saveWorkspace(force: true)
     }
 
-    private func buildMenu() {
+    func buildMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
@@ -83,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(appItem)
 
         main.addItem(menu("파일", [
+            item("새 창", #selector(newWindow(_:)), "n", .command),
             item("새 폴더", #selector(BrowserWindowController.makeFolder), "n", [.command, .shift]),
             item("새 텍스트 파일", #selector(BrowserWindowController.makeTextFile), "n", [.command, .option]),
             item("현재 폴더를 즐겨찾기에 추가", #selector(BrowserWindowController.addCurrentFolderToFavorites), "", []),
@@ -101,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("모두 선택", #selector(NSText.selectAll(_:)), "a", .command),
             item("이름 바꾸기", #selector(BrowserWindowController.beginRename), "", []),
             item("이 폴더에서 이름 거르기", #selector(BrowserWindowController.findInFolder), "f", .command),
+            item("하위 폴더에서 이름 검색", #selector(BrowserWindowController.showRecursiveSearch), "f", [.command, .shift]),
         ]))
         main.addItem(menu("이동", [
             item("뒤로", #selector(BrowserWindowController.goBackAction), "[", .command),
@@ -111,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item("미리보기 (Space)", #selector(BrowserWindowController.previewSelection), "y", .command),
             item("숨김 파일", #selector(BrowserWindowController.toggleHidden), ".", [.command, .shift]),
             item("양쪽 창", #selector(BrowserWindowController.toggleDual), "", []),
+            item("축소판 보기", #selector(BrowserWindowController.toggleThumbnails), "", []),
         ]))
         main.addItem(menu("창", [
             item("닫기", #selector(NSWindow.performClose(_:)), "w", .command),
@@ -133,6 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func item(_ title: String, _ action: Selector, _ key: String, _ mask: NSEvent.ModifierFlags) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.keyEquivalentModifierMask = mask
+        if action == #selector(newWindow(_:)) { item.target = self }
         return item
     }
 }

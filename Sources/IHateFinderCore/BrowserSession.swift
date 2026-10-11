@@ -8,6 +8,25 @@ public final class BrowserSession {
         case failed(URL, String)
     }
 
+    /// A single history visit, rather than a folder-wide preference.
+    public struct ViewState: Equatable {
+        public var selection: Set<URL>
+        public var scrollOffset: Double
+        public var filter: String
+        public var filterVisible: Bool
+
+        public init(selection: Set<URL>, scrollOffset: Double, filter: String, filterVisible: Bool) {
+            self.selection = selection
+            self.scrollOffset = scrollOffset
+            self.filter = filter
+            self.filterVisible = filterVisible
+        }
+    }
+
+    /// Invoked before every navigation, including requests made outside the pane.
+    public var captureViewState: (() -> ViewState)?
+    public private(set) var restoredViewState: ViewState?
+
     public private(set) var url: URL
     public private(set) var entries: [FileEntry] = []
     public private(set) var loadState: LoadState = .idle
@@ -18,8 +37,8 @@ public final class BrowserSession {
     public private(set) var sortColumn: SortColumn = .name
     public private(set) var ascending = true
     public var ops: FileOps
-    private var backStack: [URL] = []
-    private var forwardStack: [URL] = []
+    private var backStack: [Visit] = []
+    private var forwardStack: [Visit] = []
     private var generation = 0
     private var pending: Request?
     private var observer: DirectoryObserver?
@@ -84,7 +103,7 @@ public final class BrowserSession {
         let destination = URL(fileURLWithPath: target.standardizedFileURL.path, isDirectory: true)
         restorationNotice = nil
         let history: Request.History = destination == url || (requiresInitialCommit && revision == 0) ? .reload : .navigate
-        load(Request(url: destination, history: history))
+        load(Request(url: destination, history: history, departingState: captureViewState?()))
     }
 
     @discardableResult
@@ -99,7 +118,7 @@ public final class BrowserSession {
     public func goBack() -> Bool {
         guard let previous = backStack.last else { return false }
         restorationNotice = nil
-        load(Request(url: previous, history: .back))
+        load(Request(url: previous.url, history: .back, departingState: captureViewState?(), arrivingState: previous.state))
         return true
     }
 
@@ -107,7 +126,7 @@ public final class BrowserSession {
     public func goForward() -> Bool {
         guard let next = forwardStack.last else { return false }
         restorationNotice = nil
-        load(Request(url: next, history: .forward))
+        load(Request(url: next.url, history: .forward, departingState: captureViewState?(), arrivingState: next.state))
         return true
     }
 
@@ -157,15 +176,16 @@ public final class BrowserSession {
             switch request.history {
             case .reload: break
             case .navigate:
-                backStack.append(url)
+                backStack.append(Visit(url: url, state: request.departingState))
                 forwardStack.removeAll()
             case .back:
                 backStack.removeLast()
-                forwardStack.append(url)
+                forwardStack.append(Visit(url: url, state: request.departingState))
             case .forward:
                 forwardStack.removeLast()
-                backStack.append(url)
+                backStack.append(Visit(url: url, state: request.departingState))
             }
+            restoredViewState = request.arrivingState
             let changedDirectory = url != request.url
             url = request.url
             self.entries = entries
@@ -209,11 +229,18 @@ public final class BrowserSession {
         }
     }
 
+    private struct Visit {
+        let url: URL
+        let state: ViewState?
+    }
+
     private struct Request {
         enum History { case reload, navigate, back, forward }
         let url: URL
         let history: History
         var isRestoration = false
+        var departingState: ViewState?
+        var arrivingState: ViewState?
     }
 
     private struct Restoration {

@@ -8,22 +8,41 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     let pathField = NSTextField()
     let table = FileTableView()
     let filterField = NSSearchField()
+    let recursiveSearchField = NSSearchField()
+    let completionTable = NSTableView()
+    private let completionScroll = NSScrollView()
+    private var completionHeightConstraint: NSLayoutConstraint?
+    private var searchHeightConstraint: NSLayoutConstraint?
+    private var searchTopConstraint: NSLayoutConstraint?
+    private(set) var completionCandidates: [URL] = []
+    private var completionGeneration = 0
+    private var cancelCompletion: (() -> Void)?
+    var completeDirectories = DirectoryQueries.complete
+    var onCompletionChange: (() -> Void)?
+    private(set) var recursiveSearchVisible = false
+    private(set) var searchIsRunning = false
+    private var searchEntries: [FileEntry] = []
+    private var searchGeneration = 0
+    private var cancelSearch: (() -> Void)?
+    private var searchError: String?
+    var searchFiles = DirectoryQueries.search
+    var onSearchChange: (() -> Void)?
+    private(set) var thumbnailsEnabled = false
+    let thumbnails = PaneThumbnails()
     private var filterTopConstraint: NSLayoutConstraint?
     private var filterHeightConstraint: NSLayoutConstraint?
     /// Seams so tests never launch apps or block on a dialog.
-    var openFiles: ([URL]) -> Void = { urls in urls.forEach { NSWorkspace.shared.open($0) } }
+    var openFiles: ([URL], @escaping PaneLaunch.Completion) -> Void = PaneLaunch.files
     var confirmOpen: (Int) -> Bool = FilePaneController.askConfirmOpen
     /// Apps that can open `url`, and the default one. Replaced in tests.
     var appsForOpening: (URL) -> (apps: [URL], defaultApp: URL?) = { url in
         (NSWorkspace.shared.urlsForApplications(toOpen: url), NSWorkspace.shared.urlForApplication(toOpen: url))
     }
-    var openWithApp: ([URL], URL) -> Void = { urls, app in
-        NSWorkspace.shared.open(urls, withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
-    }
-    var openInTerminal: (URL) -> Void = { folder in
-        guard let terminal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else { return }
-        NSWorkspace.shared.open([folder], withApplicationAt: terminal, configuration: NSWorkspace.OpenConfiguration())
-    }
+    var openWithApp: ([URL], URL, @escaping PaneLaunch.Completion) -> Void = PaneLaunch.application
+    var openInTerminal: (URL, @escaping PaneLaunch.Completion) -> Void = PaneLaunch.terminal
+    var presentLaunchError: ((String) -> Void)?
+    var onLaunchOutcome: ((Result<Void, Error>) -> Void)?
+    var onRenameStart: (() -> Void)?
     var showInfoSheet: (URL) -> Void = { url in
         InfoPanel.present(for: url, in: NSApp.keyWindow ?? NSApp.mainWindow)
     }
@@ -57,6 +76,28 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         self.displayedURL = session.url
         super.init(nibName: nil, bundle: nil)
         session.onChange = { [weak self] in self?.show() }
+        session.captureViewState = { [weak self] in
+            guard let self, self.isViewLoaded else {
+                return BrowserSession.ViewState(selection: [], scrollOffset: 0, filter: "", filterVisible: false)
+            }
+            let state = BrowserSession.ViewState(selection: Set(self.selectedURLs()),
+                                                 scrollOffset: Double(self.scroll.contentView.bounds.origin.y),
+                                                 filter: self.filterField.stringValue, filterVisible: self.filterIsVisible)
+            self.table.cancelPendingRename()
+            self.dismissCompletions()
+            return state
+        }
+    }
+
+    deinit {
+        cancelCompletion?()
+        cancelSearch?()
+    }
+
+    func cancelBackgroundWork() {
+        dismissCompletions()
+        endRecursiveSearch()
+        thumbnails.invalidate()
     }
 
     @available(*, unavailable)
@@ -135,6 +176,27 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         filterField.action = #selector(filterChanged)
         filterField.isHidden = true
 
+        StudioField.styleSearch(recursiveSearchField, placeholder: "이 폴더와 하위 폴더에서 이름 검색")
+        recursiveSearchField.delegate = self
+        recursiveSearchField.target = self
+        recursiveSearchField.action = #selector(recursiveSearchChanged)
+        recursiveSearchField.isHidden = true
+        recursiveSearchField.translatesAutoresizingMaskIntoConstraints = false
+
+        completionTable.addTableColumn(NSTableColumn(identifier: .init("directory-completion")))
+        completionTable.headerView = nil
+        completionTable.rowHeight = 24
+        completionTable.intercellSpacing = .zero
+        completionTable.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        completionTable.dataSource = self
+        completionTable.delegate = self
+        completionTable.target = self
+        completionTable.doubleAction = #selector(commitCompletion)
+        completionScroll.documentView = completionTable
+        completionScroll.hasVerticalScroller = true
+        completionScroll.isHidden = true
+        completionScroll.translatesAutoresizingMaskIntoConstraints = false
+
         pathField.translatesAutoresizingMaskIntoConstraints = false
         filterField.translatesAutoresizingMaskIntoConstraints = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
@@ -144,6 +206,8 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         card.addSubview(scroll)
         root.addSubview(pathField)
         root.addSubview(filterField)
+        root.addSubview(recursiveSearchField)
+        root.addSubview(completionScroll)
         root.addSubview(card)
         root.addSubview(loadStatus)
         NSLayoutConstraint.activate([
@@ -153,7 +217,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             pathField.heightAnchor.constraint(equalToConstant: 32),
             filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
-            card.topAnchor.constraint(equalTo: filterField.bottomAnchor, constant: 10),
+            card.topAnchor.constraint(equalTo: recursiveSearchField.bottomAnchor, constant: 10),
             card.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             card.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             card.bottomAnchor.constraint(equalTo: loadStatus.topAnchor, constant: -6),
@@ -164,11 +228,20 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             loadStatus.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 4),
             loadStatus.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -4),
             loadStatus.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -8),
+            completionScroll.topAnchor.constraint(equalTo: pathField.bottomAnchor),
+            completionScroll.leadingAnchor.constraint(equalTo: pathField.leadingAnchor),
+            completionScroll.trailingAnchor.constraint(equalTo: pathField.trailingAnchor),
+            recursiveSearchField.leadingAnchor.constraint(equalTo: filterField.leadingAnchor),
+            recursiveSearchField.trailingAnchor.constraint(equalTo: filterField.trailingAnchor),
         ])
-        let filterTop = filterField.topAnchor.constraint(equalTo: pathField.bottomAnchor, constant: 0)
+        let filterTop = filterField.topAnchor.constraint(equalTo: completionScroll.bottomAnchor, constant: 0)
         let filterHeight = filterField.heightAnchor.constraint(equalToConstant: 0)
         filterTopConstraint = filterTop
         filterHeightConstraint = filterHeight
+        completionHeightConstraint = completionScroll.heightAnchor.constraint(equalToConstant: 0)
+        searchHeightConstraint = recursiveSearchField.heightAnchor.constraint(equalToConstant: 0)
+        searchTopConstraint = recursiveSearchField.topAnchor.constraint(equalTo: filterField.bottomAnchor)
+        NSLayoutConstraint.activate([completionHeightConstraint!, searchHeightConstraint!, searchTopConstraint!])
         NSLayoutConstraint.activate([filterTop, filterHeight])
         root.onAppearanceChange = { [weak self] in self?.applyChrome() }
         view = root
@@ -185,26 +258,49 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             loadStatus.textColor = Studio.muted
         }
         if editingRow < 0 && table.editedRow < 0 {
-            let selection = editingSelection ?? Set(selectedURLs())
-            editingSelection = nil
+            let newRevision = displayedRevision != session.revision
             let sameDirectory = displayedURL == session.url
-            if !sameDirectory { resetFilter() }
-            if displayedRevision != session.revision {
-                table.cancelPendingRename()
+            let restored = newRevision ? session.restoredViewState : nil
+            let selection = restored?.selection ?? editingSelection ?? Set(selectedURLs())
+            editingSelection = nil
+            if !sameDirectory {
+                resetFilter()
+                endRecursiveSearch()
+                dismissCompletions()
             }
-            displayedEntries = EntryFilter.filter(session.entries, query: filterField.stringValue)
+            if let restored {
+                filterField.stringValue = restored.filter
+                filterField.isHidden = !restored.filterVisible
+                filterTopConstraint?.constant = restored.filterVisible ? 8 : 0
+                filterHeightConstraint?.constant = restored.filterVisible ? 32 : 0
+            }
+            if newRevision {
+                table.cancelPendingRename()
+                thumbnails.invalidate()
+            }
+            displayedEntries = EntryFilter.filter(recursiveSearchVisible ? searchEntries : session.entries,
+                                                   query: filterField.stringValue)
             displayedURL = session.url
             displayedRevision = session.revision
             table.reloadData()
             let indexes = IndexSet(displayedEntries.indices.filter {
-                sameDirectory && selection.contains(displayedEntries[$0].url)
+                (sameDirectory || restored != nil) && selection.contains(displayedEntries[$0].url)
             })
             table.selectRowIndexes(indexes, byExtendingSelection: false)
             if !sameDirectory, let pending = pendingReveal,
                pending.url.deletingLastPathComponent().standardizedFileURL.path != displayedURL.standardizedFileURL.path {
                 pendingReveal = nil
             }
+            if let restored {
+                view.layoutSubtreeIfNeeded()
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: restored.scrollOffset))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            } else if !sameDirectory {
+                view.layoutSubtreeIfNeeded()
+                if !displayedEntries.isEmpty { table.scrollRowToVisible(0) }
+            }
             applyPendingReveal()
+            if newRevision, sameDirectory, recursiveSearchVisible { runRecursiveSearch() }
         }
         if pathField.currentEditor() == nil {
             pathField.stringValue = displayedURL.path
@@ -272,6 +368,11 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         case .idle: break
         }
         if let notice = session.restorationNotice { return notice }
+        if recursiveSearchVisible {
+            if searchIsRunning { return "하위 폴더 검색 중… \(session.url.path)" }
+            if let searchError { return "검색하지 못했습니다: \(searchError)" }
+            return "하위 폴더 검색 \(displayedEntries.count)개 · 선택 \(selectedURLs().count)개 · \(session.url.path)"
+        }
         let count = displayedEntries.count
         let total = session.entries.count
         let countText = filterIsActive ? "\(total)개 중 \(count)개 표시" : "\(count)개 항목"
@@ -327,7 +428,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             session.navigate(to: url)
         case .openFiles(let urls, let confirm):
             if confirm && !confirmOpen(urls.count) { return }
-            openFiles(urls)
+            openFiles(urls, launchCompletion(context: "파일 열기", urls: urls))
         case .refuse(let message):
             browser?.alert(message)
         }
@@ -341,6 +442,166 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         return alert.runModal() == .alertFirstButtonReturn
     }
 
+
+    private func launchCompletion(context: String, urls: [URL]) -> PaneLaunch.Completion {
+        { [weak self] result in
+            guard let self else { return }
+            if case .failure(let error) = result {
+                let message = "\(context)을(를) 완료하지 못했습니다.\n\(urls.map(\.path).joined(separator: "\n"))\n\(error.localizedDescription)\n파일과 앱이 있는지 확인한 뒤 ‘다른 앱으로 열기’를 선택하거나 다시 시도해 주세요."
+                if let present = self.presentLaunchError { present(message) }
+                else { self.browser?.alert(message) }
+            }
+            self.onLaunchOutcome?(result)
+        }
+    }
+
+    // MARK: Address completion
+
+    func updatePathCompletions() {
+        completionGeneration += 1
+        let ticket = completionGeneration
+        cancelCompletion?()
+        completionCandidates = []
+        completionTable.reloadData()
+        completionScroll.isHidden = true
+        completionHeightConstraint?.constant = 0
+        let query = pathField.stringValue
+        guard !query.isEmpty else { onCompletionChange?(); return }
+        cancelCompletion = completeDirectories(query, session.url, session.includeHidden) { [weak self] result in
+            guard let self, self.completionGeneration == ticket else { return }
+            self.cancelCompletion = nil
+            self.completionCandidates = (try? result.get()) ?? []
+            self.completionTable.reloadData()
+            self.completionScroll.isHidden = self.completionCandidates.isEmpty
+            self.completionHeightConstraint?.constant = CGFloat(min(5, self.completionCandidates.count)) * 24
+            self.completionTable.deselectAll(nil)
+            self.onCompletionChange?()
+        }
+    }
+
+    private func dismissCompletions() {
+        completionGeneration += 1
+        cancelCompletion?()
+        cancelCompletion = nil
+        completionCandidates = []
+        completionTable.reloadData()
+        completionScroll.isHidden = true
+        completionHeightConstraint?.constant = 0
+    }
+
+    private func acceptCompletion() -> Bool {
+        let row = max(0, completionTable.selectedRow)
+        guard completionCandidates.indices.contains(row) else { return false }
+        pathField.stringValue = completionCandidates[row].path + "/"
+        pathField.currentEditor()?.string = pathField.stringValue
+        pathField.currentEditor()?.selectedRange = NSRange(location: pathField.stringValue.utf16.count, length: 0)
+        dismissCompletions()
+        return true
+    }
+
+    @objc private func commitCompletion() {
+        if acceptCompletion() { commitPath() }
+    }
+
+    // MARK: Recursive search and thumbnails
+
+    func showRecursiveSearch() {
+        _ = view
+        resetFilter()
+        recursiveSearchVisible = true
+        recursiveSearchField.isHidden = false
+        searchTopConstraint?.constant = 8
+        searchHeightConstraint?.constant = 32
+        if table.tableColumn(withIdentifier: .init("location")) == nil {
+            let column = NSTableColumn(identifier: .init("location"))
+            column.title = "원래 위치"
+            column.width = 260
+            column.minWidth = 120
+            table.addTableColumn(column)
+            table.moveColumn(table.numberOfColumns - 1, toColumn: 1)
+        }
+        view.window?.makeFirstResponder(recursiveSearchField)
+        recursiveSearchField.currentEditor()?.selectAll(nil)
+        browser?.focus(self)
+        runRecursiveSearch()
+    }
+
+    @objc func recursiveSearchChanged() {
+        runRecursiveSearch()
+    }
+
+    private func runRecursiveSearch() {
+        guard recursiveSearchVisible else { return }
+        searchGeneration += 1
+        let ticket = searchGeneration
+        cancelSearch?()
+        cancelSearch = nil
+        searchError = nil
+        searchEntries = []
+        thumbnails.invalidate()
+        let query = recursiveSearchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        searchIsRunning = !query.isEmpty
+        applyFilter()
+        guard !query.isEmpty else { onSearchChange?(); return }
+        let root = session.url
+        cancelSearch = searchFiles(root, query, session.includeHidden) { [weak self] result in
+            guard let self, self.searchGeneration == ticket, self.recursiveSearchVisible,
+                  self.session.url == root else { return }
+            self.cancelSearch = nil
+            self.searchIsRunning = false
+            switch result {
+            case .success(let entries):
+                self.searchEntries = FileOps.sorted(entries, by: self.session.sortColumn, ascending: self.session.ascending)
+            case .failure(let error):
+                self.searchError = error.localizedDescription
+            }
+            self.applyFilter()
+            self.onSearchChange?()
+        }
+    }
+
+    private func endRecursiveSearch() {
+        searchGeneration += 1
+        cancelSearch?()
+        cancelSearch = nil
+        searchIsRunning = false
+        recursiveSearchVisible = false
+        searchEntries = []
+        thumbnails.invalidate()
+        searchError = nil
+        recursiveSearchField.stringValue = ""
+        recursiveSearchField.isHidden = true
+        searchTopConstraint?.constant = 0
+        searchHeightConstraint?.constant = 0
+        if let column = table.tableColumn(withIdentifier: .init("location")) { table.removeTableColumn(column) }
+    }
+
+    @discardableResult
+    func clearRecursiveSearch() -> Bool {
+        guard recursiveSearchVisible else { return false }
+        endRecursiveSearch()
+        applyFilter()
+        view.window?.makeFirstResponder(table)
+        onSearchChange?()
+        return true
+    }
+
+    @objc func revealOriginalFolder() {
+        guard let url = selectedURLs().first else { return }
+        let parent = url.deletingLastPathComponent()
+        endRecursiveSearch()
+        pendingReveal = (url, false)
+        session.navigate(to: parent)
+    }
+
+    func toggleThumbnails() {
+        _ = view
+        thumbnailsEnabled.toggle()
+        thumbnails.invalidate()
+        table.rowHeight = thumbnailsEnabled ? 88 : 32
+        table.tableColumn(withIdentifier: .init(SortColumn.name.rawValue))?.minWidth = thumbnailsEnabled ? 220 : 140
+        table.reloadData()
+    }
     // MARK: Filter
 
     var filterIsActive: Bool {
@@ -352,6 +613,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     func showFilter() {
         _ = view
         filterField.isHidden = false
+        if recursiveSearchVisible {
+            endRecursiveSearch()
+            applyFilter()
+        }
         filterTopConstraint?.constant = 8
         filterHeightConstraint?.constant = 32
         view.window?.makeFirstResponder(filterField)
@@ -386,7 +651,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     private func applyFilter() {
         guard isViewLoaded, editingRow < 0, table.editedRow < 0 else { return }
         let selection = Set(selectedURLs())
-        displayedEntries = EntryFilter.filter(session.entries, query: filterField.stringValue)
+        displayedEntries = EntryFilter.filter(recursiveSearchVisible ? searchEntries : session.entries, query: filterField.stringValue)
         table.reloadData()
         let indexes = IndexSet(displayedEntries.indices.filter { selection.contains(displayedEntries[$0].url) })
         table.selectRowIndexes(indexes, byExtendingSelection: false)
@@ -452,6 +717,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let entry = displayedEntries[row]
         let range = RenameSelection.range(name: entry.name, isDirectory: entry.isDirectory)
         (view.window?.firstResponder as? NSTextView)?.setSelectedRange(range)
+        onRenameStart?()
     }
 
     @objc func makeFolder() {
@@ -492,7 +758,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     func controlTextDidBeginEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
-        if field === filterField {
+        if field === filterField || field === recursiveSearchField {
             browser?.focus(self)
         } else if field === pathField {
             browser?.focus(self)
@@ -504,6 +770,16 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if control === recursiveSearchField {
+            if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+                return clearRecursiveSearch()
+            }
+            if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+                view.window?.makeFirstResponder(table)
+                return true
+            }
+            return false
+        }
         if control === filterField {
             if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
                 _ = clearActiveFilter()
@@ -516,7 +792,29 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             return false
         }
         guard control === pathField else { return false }
+        if commandSelector == #selector(NSResponder.moveDown(_:)) || commandSelector == #selector(NSResponder.moveUp(_:)) {
+            guard !completionCandidates.isEmpty else { updatePathCompletions(); return true }
+            let step = commandSelector == #selector(NSResponder.moveDown(_:)) ? 1 : -1
+            let row = max(0, min(completionCandidates.count - 1, completionTable.selectedRow + step))
+            completionTable.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            completionTable.scrollRowToVisible(row)
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertTab(_:)) {
+            if !acceptCompletion() { updatePathCompletions() }
+            return true
+        }
+        if commandSelector == #selector(NSResponder.insertNewline(_:)) {
+            if completionTable.selectedRow >= 0 { _ = acceptCompletion() }
+            commitPath()
+            return true
+        }
         if commandSelector == #selector(NSResponder.cancelOperation(_:)) {
+            if !completionCandidates.isEmpty {
+                dismissCompletions()
+                return true
+            }
+            dismissCompletions()
             pathField.stringValue = session.url.path
             view.window?.makeFirstResponder(table)
             return true
@@ -526,13 +824,19 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     func controlTextDidChange(_ obj: Notification) {
         if (obj.object as? NSSearchField) === filterField { applyFilter() }
+        if (obj.object as? NSTextField) === pathField { updatePathCompletions() }
+        if (obj.object as? NSSearchField) === recursiveSearchField { runRecursiveSearch() }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField else { return }
-        if field === filterField { return }
+        if field === filterField || field === recursiveSearchField { return }
         if field === pathField {
-            DispatchQueue.main.async { [weak self] in self?.show() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                if self.view.window?.firstResponder !== self.completionTable { self.dismissCompletions() }
+                self.show()
+            }
             return
         }
         let row = editingRow
@@ -559,10 +863,11 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int {
-        displayedEntries.count
+        tableView === completionTable ? completionCandidates.count : displayedEntries.count
     }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        if tableView === completionTable { return nil }
         let rowView = tableView.makeView(
             withIdentifier: NSUserInterfaceItemIdentifier("studio-file-row"),
             owner: self
@@ -574,6 +879,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        if tableView === completionTable {
+            guard completionCandidates.indices.contains(row) else { return nil }
+            let label = NSTextField(labelWithString: completionCandidates[row].path + "/")
+            label.lineBreakMode = .byTruncatingMiddle
+            label.toolTip = label.stringValue
+            return label
+        }
         guard let tableColumn, displayedEntries.indices.contains(row) else { return nil }
         let entry = displayedEntries[row]
         let cell = reusedCell(tableView, column: tableColumn)
@@ -582,6 +894,20 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         case .name:
             cell.textField?.stringValue = entry.name
             cell.imageView?.image = NSWorkspace.shared.icon(forFile: entry.url.path)
+            if let cell = cell as? PaneNameCell {
+                cell.representedURL = entry.url
+                cell.imageWidth?.constant = thumbnailsEnabled ? 72 : 18
+                cell.imageHeight?.constant = thumbnailsEnabled ? 72 : 18
+                if thumbnailsEnabled, !entry.isDirectory {
+                    let generation = thumbnails.generation
+                    thumbnails.image(for: entry.url) { [weak self, weak cell] image in
+                        guard let self, let cell, self.thumbnailsEnabled,
+                              self.thumbnails.generation == generation, cell.representedURL == entry.url,
+                              let image else { return }
+                        cell.imageView?.image = image
+                    }
+                }
+            }
         case .modified:
             cell.textField?.stringValue = dateFormatter.string(from: entry.modified)
         case .kind:
@@ -589,7 +915,9 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         case .size:
             cell.textField?.stringValue = entry.isDirectory ? "—" : sizeFormatter.string(fromByteCount: entry.size)
         case nil:
-            break
+            cell.textField?.stringValue = entry.url.deletingLastPathComponent().path
+            cell.textField?.lineBreakMode = .byTruncatingMiddle
+            cell.toolTip = entry.url.path
         }
         let name = column == .name
         cell.textField?.textColor = name ? Studio.ink : Studio.muted
@@ -601,6 +929,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        guard notification.object as? NSTableView === table else { return }
         reloadPreviewIfShowing()
         loadStatus.stringValue = summary()
         loadStatus.toolTip = loadStatus.stringValue
@@ -608,6 +937,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard tableView === table else { return }
         guard let descriptor = tableView.sortDescriptors.first,
               let column = SortColumn(rawValue: descriptor.key ?? "") else { return }
         session.setSort(column, ascending: descriptor.ascending)
@@ -720,11 +1050,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             #selector(copyPathSelection): state.copyPath,
             #selector(showInfo): state.info,
             #selector(openInTerminalAction): state.terminal,
+            #selector(revealOriginalFolder): recursiveSearchVisible && selection.count == 1,
             #selector(BrowserWindowController.previewSelection): state.open && table.editedRow < 0,
             #selector(BrowserWindowController.addCurrentFolderToFavorites): browser?.canAddCurrentFolderToFavorites ?? false,
         ]
         for item in menu.items {
             if let action = item.action, let value = enabled[action] { item.isEnabled = value }
+            if item.action == #selector(revealOriginalFolder) { item.isHidden = !recursiveSearchVisible }
             if item.action == #selector(BrowserWindowController.copyToOther) ||
                 item.action == #selector(BrowserWindowController.moveToOther) {
                 item.isEnabled = browser?.configureTransferMenuItem(item) ?? false
@@ -763,7 +1095,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         guard let app = sender.representedObject as? URL else { return }
         let urls = selectedURLs()
         guard !urls.isEmpty else { return }
-        openWithApp(urls, app)
+        openWithApp(urls, app, launchCompletion(context: "\(app.lastPathComponent)에서 열기", urls: urls))
     }
 
     @objc func copyPathSelection() {
@@ -774,7 +1106,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let selected = table.selectedRowIndexes.compactMap { index in
             displayedEntries.indices.contains(index) ? displayedEntries[index] : nil
         }
-        openInTerminal(MenuState.terminalFolder(selection: selected, current: displayedURL))
+        let current = recursiveSearchVisible && selected.count == 1
+            ? selected[0].url.deletingLastPathComponent() : displayedURL
+        let folder = MenuState.terminalFolder(selection: selected, current: current)
+        openInTerminal(folder, launchCompletion(context: "터미널에서 열기", urls: [folder]))
     }
 
     @objc func compressSelection() {
@@ -790,8 +1125,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     @objc private func commitPath() {
-        let typed = pathField.stringValue
-        session.navigate(to: URL(fileURLWithPath: (typed as NSString).expandingTildeInPath))
+        let typed = (pathField.stringValue as NSString).expandingTildeInPath
+        dismissCompletions()
+        let target = typed.hasPrefix("/") ? URL(fileURLWithPath: typed) : session.url.appendingPathComponent(typed)
+        session.navigate(to: target)
         view.window?.makeFirstResponder(table)
     }
 
@@ -824,6 +1161,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             ("휴지통으로 옮기기", #selector(trashSelection)),
             ("압축", #selector(compressSelection)),
             ("경로 복사", #selector(copyPathSelection)),
+            ("원래 폴더에서 보기", #selector(revealOriginalFolder)),
             ("정보 보기", #selector(showInfo)),
             ("터미널에서 열기", #selector(openInTerminalAction)),
             ("현재 폴더를 즐겨찾기에 추가", #selector(BrowserWindowController.addCurrentFolderToFavorites)),
@@ -835,7 +1173,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
             if [#selector(makeFolder), #selector(makeTextFile), #selector(openSelection), #selector(beginRename),
                 #selector(trashSelection), #selector(compressSelection), #selector(copyPathSelection),
-                #selector(showInfo), #selector(openInTerminalAction)].contains(action) {
+                #selector(showInfo), #selector(openInTerminalAction), #selector(revealOriginalFolder)].contains(action) {
                 item.target = self
             }
             menu.addItem(item)
@@ -847,7 +1185,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         if let cell = tableView.makeView(withIdentifier: column.identifier, owner: self) as? NSTableCellView {
             return cell
         }
-        let cell = NSTableCellView()
+        let cell = PaneNameCell()
         cell.identifier = column.identifier
         let text = NSTextField()
         text.isBezeled = false
@@ -866,11 +1204,13 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             image.translatesAutoresizingMaskIntoConstraints = false
             cell.addSubview(image)
             cell.imageView = image
+            cell.imageWidth = image.widthAnchor.constraint(equalToConstant: 18)
+            cell.imageHeight = image.heightAnchor.constraint(equalToConstant: 18)
             NSLayoutConstraint.activate([
                 image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
                 image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                image.widthAnchor.constraint(equalToConstant: 18),
-                image.heightAnchor.constraint(equalToConstant: 18),
+                cell.imageWidth!,
+                cell.imageHeight!,
                 text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 8),
                 text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
                 text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),

@@ -209,7 +209,7 @@ public struct FileOps {
             let isDirectory = (values.isDirectory ?? false) && !isPackage
             let kind = values.localizedTypeDescription ?? (isDirectory ? "폴더" : "파일")
             entries.append(FileEntry(
-                url: url,
+                url: url.standardizedFileURL,
                 name: name,
                 isDirectory: isDirectory,
                 size: isDirectory ? 0 : Int64(values.fileSize ?? 0),

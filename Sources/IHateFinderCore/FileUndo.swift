@@ -85,6 +85,14 @@ public struct FileUndoReport: Equatable {
     public let title: String
     /// Applied in reverse record order.
     public let items: [FileUndoItemResult]
+    /// Untouched, still-verifiable items that can be tried again, in original record order.
+    public let retryRecord: UndoRecord?
+
+    public init(title: String, items: [FileUndoItemResult], retryRecord: UndoRecord? = nil) {
+        self.title = title
+        self.items = items
+        self.retryRecord = retryRecord
+    }
 
     public var undone: [FileUndoItemResult] { items.filter(\.isUndone) }
     /// Items that were only partly undone; their messages say what remains and where.
@@ -178,11 +186,16 @@ extension FileOps {
 // MARK: Inverses
 
 extension FileOps {
-    /// Applies the inverse of each item in reverse order. Never overwrites, never deletes:
-    /// it only moves into an empty place or sends an item to the Trash. An item that fails
-    /// a precondition is left untouched and reported.
+    /// Applies the inverse of each item in reverse order. Never overwrites: it moves or
+    /// copies into an empty place and sends superseded items to the Trash. An item that
+    /// fails a precondition is left untouched and reported.
     public func undo(_ record: UndoRecord) -> FileUndoReport {
-        FileUndoReport(title: record.title, items: record.items.reversed().map(undoItem))
+        let results = record.items.reversed().map(undoItem)
+        let retryItems = zip(record.items, results.reversed()).compactMap { item, result in
+            canRetry(item, after: result.status) ? item : nil
+        }
+        let retry = retryItems.isEmpty ? nil : UndoRecord(title: record.title, items: retryItems)
+        return FileUndoReport(title: record.title, items: results, retryRecord: retry)
     }
 
     private typealias Status = FileUndoItemResult.Status
@@ -229,11 +242,28 @@ extension FileOps {
             if same {
                 try fm.moveItem(at: to, to: from)
             } else if let sourceTrash {
-                try fm.moveItem(at: sourceTrash.trashURL, to: from)
+                // The Trash snapshot predates edits made after the move. Copy the current
+                // item back through staging, and keep the snapshot as a separate recovery copy.
+                let copied = write(to, to: from, moving: false, replacing: false)
+                guard copied.status == .completed, copied.message == nil else {
+                    let partial = copied.status == .completed || copied.recovery?.status == .manualRecoveryRequired
+                    var message = copied.message ?? "현재 항목을 원래 자리로 복사하지 못했습니다."
+                    if let recovery = copied.recovery {
+                        message += "\n\(recovery.message)\n\(recovery.locations.map(\.path).joined(separator: "\n"))"
+                    }
+                    message += "\n옮긴 항목은 \(to.path), 이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다."
+                    return result(to, partial ? .partiallyUndone : .failed(message), message,
+                                  restored: copied.status == .completed ? [from] : [])
+                }
+                if let status = presenceProblem(to, id: id) {
+                    return result(from, .partiallyUndone,
+                                  "현재 내용을 \(from.path)에 복사했지만 옮긴 자리의 항목을 확인할 수 없어 휴지통으로 보내지 않았습니다. \(Self.message(for: status, url: to) ?? "")\n이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다.",
+                                  restored: [from])
+                }
                 do {
                     _ = try moveToTrash(to)
                 } catch {
-                    var message = "‘\(to.lastPathComponent)’: 원본은 되돌렸지만 옮겨 간 사본을 휴지통으로 보내지 못해 \(to.path)에 남아 있습니다: \(error.localizedDescription)"
+                    var message = "‘\(to.lastPathComponent)’: 현재 내용을 \(from.path)에 되돌렸지만 옮겨 간 항목을 휴지통으로 보내지 못해 \(to.path)에 남아 있습니다: \(error.localizedDescription)\n이전 원본은 휴지통(\(sourceTrash.trashURL.path))에 남아 있습니다."
                     if let trash = replaced?.trash {
                         message += "\n바꾸기로 휴지통에 간 기존 항목은 제자리로 돌리지 않았고 휴지통(\(trash.trashURL.path))에 남아 있습니다."
                     }
@@ -258,7 +288,9 @@ extension FileOps {
             let outcome = write(to, to: from, moving: true, replacing: false, stagingMove: true)
             guard outcome.status == .completed, outcome.message == nil else {
                 let message = outcome.message ?? "이름을 되돌리지 못했습니다."
-                return result(to, .failed(message), message)
+                let partial = outcome.status == .completed || outcome.recovery?.status == .manualRecoveryRequired
+                return result(to, partial ? .partiallyUndone : .failed(message), message,
+                              restored: outcome.status == .completed ? [from] : [])
             }
         } else {
             if let status = slotProblem(from) { return result(to, status) }
@@ -307,6 +339,30 @@ extension FileOps {
     }
 
     // MARK: Preconditions
+
+    /// A status alone cannot distinguish a missing parent from a missing source, or an
+    /// error before mutation from one after mutation. Re-prove every recorded input.
+    private func canRetry(_ item: UndoItem, after status: Status) -> Bool {
+        switch status {
+        case .occupied, .missing, .failed: break
+        default: return false
+        }
+        switch item {
+        case .created(let url, let id):
+            return presenceProblem(url, id: id) == nil
+        case .copied(let dest, let id, let replaced):
+            return presenceProblem(dest, id: id) == nil && replacedProblem(replaced) == nil
+        case .moved(_, let to, let id, let same, let sourceTrash, let replaced):
+            guard presenceProblem(to, id: id) == nil, replacedProblem(replaced) == nil else { return false }
+            if same { return true }
+            guard let sourceTrash else { return false }
+            return trashProblem(sourceTrash) == nil
+        case .renamed(_, let to, let id, let replaced):
+            return presenceProblem(to, id: id) == nil && replacedProblem(replaced) == nil
+        case .trashed(_, let trash):
+            return trashProblem(trash) == nil
+        }
+    }
 
     /// Nil means `url` still holds the item the operation produced.
     private func presenceProblem(_ url: URL, id: FileID?) -> Status? {

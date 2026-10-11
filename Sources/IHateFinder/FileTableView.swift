@@ -124,7 +124,9 @@ final class FileTableView: NSTableView, NSMenuItemValidation {
             pane?.toggleQuickLook()
             return
         }
-        if event.keyCode == 53, pane?.clearActiveFilter() == true { return }
+        if event.keyCode == 53 {
+            if pane?.clearRecursiveSearch() == true || pane?.clearActiveFilter() == true { return }
+        }
         super.keyDown(with: event)
     }
 

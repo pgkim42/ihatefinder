@@ -1,6 +1,7 @@
 import Foundation
 
 public final class FavoritePlacesStore {
+    public static let didChangeNotification = Notification.Name("IHateFinder.favoritePlacesDidChange")
     private let defaults: UserDefaults
     private let key: String
 
@@ -20,6 +21,7 @@ public final class FavoritePlacesStore {
         let paths = normalized(places).map(\.path)
         guard let data = try? JSONEncoder().encode(paths) else { return }
         defaults.set(data, forKey: key)
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
 
     private func normalized(_ places: [URL]) -> [URL] {

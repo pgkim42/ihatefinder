@@ -16,14 +16,6 @@ final class PaneDailyTests: XCTestCase {
         try FileManager.default.removeItem(at: root)
     }
 
-    @MainActor
-    private func waitUntil(_ message: String, _ predicate: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while !predicate(), Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        XCTAssertTrue(predicate(), message)
-    }
 
     @MainActor
     private func makePane(at url: URL) async throws -> (FilePaneController, BrowserSession, NSWindow) {
@@ -34,7 +26,7 @@ final class PaneDailyTests: XCTestCase {
                               styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.contentViewController = pane
         _ = pane.view
-        try await waitUntil("initial load") { !session.isLoading && session.revision > 0 }
+        await awaitPaneLoad(pane) { session.reload() }
         return (pane, session, window)
     }
 
@@ -44,12 +36,11 @@ final class PaneDailyTests: XCTestCase {
         try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
         try Data("x".utf8).write(to: root.appendingPathComponent("a-file.txt"))
         try FileManager.default.createDirectory(at: root.appendingPathComponent("z-other", isDirectory: true), withIntermediateDirectories: true)
-        let (pane, session, window) = try await makePane(at: child)
+        let (pane, _, window) = try await makePane(at: child)
         _ = window
 
-        pane.goUp()
-        try await waitUntil("went up") { !session.isLoading && session.url.path == self.root.path }
-        try await waitUntil("origin selected") { pane.selectedURLs().map(\.lastPathComponent) == ["child"] }
+        await awaitPaneLoad(pane, expectedURL: root) { pane.goUp() }
+        XCTAssertEqual(pane.selectedURLs().map(\.lastPathComponent), ["child"])
 
         XCTAssertNil(pane.pendingReveal)
     }
@@ -64,9 +55,8 @@ final class PaneDailyTests: XCTestCase {
         pane.revealAfterReload(later, rename: false)
         XCTAssertEqual(pane.selectedURLs(), [])
         try Data("y".utf8).write(to: later)
-        session.reload()
-
-        try await waitUntil("later.txt selected") { pane.selectedURLs().map(\.lastPathComponent) == ["later.txt"] }
+        await awaitPaneLoad(pane) { session.reload() }
+        XCTAssertEqual(pane.selectedURLs().map(\.lastPathComponent), ["later.txt"])
         XCTAssertNil(pane.pendingReveal)
     }
 
@@ -79,8 +69,7 @@ final class PaneDailyTests: XCTestCase {
 
         pane.revealAfterReload(root.appendingPathComponent("never-created.txt"), rename: true)
         XCTAssertNotNil(pane.pendingReveal)
-        session.navigate(to: elsewhere)
-        try await waitUntil("navigated") { !session.isLoading && session.url.path == elsewhere.path }
+        await awaitPaneLoad(pane, expectedURL: elsewhere) { session.navigate(to: elsewhere) }
 
         XCTAssertNil(pane.pendingReveal)
         XCTAssertEqual(pane.selectedURLs(), [])
@@ -93,20 +82,23 @@ final class PaneDailyTests: XCTestCase {
         test.browser.window?.setContentSize(NSSize(width: 1000, height: 600))
         test.browser.window?.contentView?.layoutSubtreeIfNeeded()
         _ = pane.view
-        try await waitUntil("initial load") { !pane.session.isLoading && pane.session.revision > 0 }
+        await awaitPaneLoad(pane) { pane.session.reload() }
+        let renameBegan = expectation(description: "New folder rename editor began")
+        pane.onRenameStart = { renameBegan.fulfill() }
+        defer { pane.onRenameStart = nil }
 
         pane.makeFolder()
         try await test.browser.waitIdle()
 
         let created = test.left.appendingPathComponent("새 폴더").standardizedFileURL
         test.browser.window?.contentView?.layoutSubtreeIfNeeded()
-        try await waitUntil("new folder selected") { pane.selectedURLs().map(\.standardizedFileURL) == [created] }
+        await fulfillment(of: [renameBegan], timeout: 5)
+        XCTAssertEqual(pane.selectedURLs().map(\.standardizedFileURL), [created])
         XCTAssertTrue(FileManager.default.fileExists(atPath: created.path))
         XCTAssertEqual(test.browser.undoJournal.peek?.title, "새로 만들기")
-        try await waitUntil("rename editor active on the new folder row") {
-            guard let editor = test.browser.window?.firstResponder as? NSTextView,
-                  let field = editor.delegate as? NSTextField else { return false }
-            return pane.table.row(for: field) == 0 && field.stringValue == "새 폴더"
-        }
+        let editor = try XCTUnwrap(test.browser.window?.firstResponder as? NSTextView)
+        let field = try XCTUnwrap(editor.delegate as? NSTextField)
+        XCTAssertEqual(pane.table.row(for: field), 0)
+        XCTAssertEqual(field.stringValue, "새 폴더")
     }
 }

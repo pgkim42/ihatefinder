@@ -123,6 +123,40 @@ final class PlacesAndActionsTests: XCTestCase {
     }
 
     @MainActor
+    func testFavoriteChangesStaySynchronizedAcrossOpenWindows() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "PlacesAndActionsTests.windows.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let firstStore = FavoritePlacesStore(defaults: defaults)
+        let secondStore = FavoritePlacesStore(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        let first = try makeTestBrowser(root: root, favoriteStore: firstStore)
+        let second = try makeTestBrowser(root: root, favoriteStore: secondStore)
+        defer { first.browser.close(); second.browser.close() }
+        await awaitPaneLoad(first.browser.left) { first.browser.left.session.reload() }
+        await awaitPaneLoad(second.browser.right) { second.browser.right.session.reload() }
+
+        first.browser.addCurrentFolderToFavorites()
+        XCTAssertEqual(second.browser.favoritePlaces, [first.left])
+        second.browser.focus(second.browser.right)
+        second.browser.addCurrentFolderToFavorites()
+        XCTAssertEqual(firstStore.load(), [first.left, second.right])
+        XCTAssertEqual(first.browser.favoritePlaces, [first.left, second.right])
+        XCTAssertEqual(second.browser.favoritePlaces, first.browser.favoritePlaces)
+
+        let item = NSMenuItem()
+        item.representedObject = second.right
+        first.browser.moveFavoriteUp(item)
+        XCTAssertEqual(second.browser.favoritePlaces, [second.right, first.left])
+        item.representedObject = first.left
+        second.browser.removeFavorite(item)
+        XCTAssertEqual(first.browser.favoritePlaces, [second.right])
+        XCTAssertEqual(firstStore.load(), [second.right])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.left.path))
+    }
+
+    @MainActor
     func testWorkspaceVolumeNotificationsRefreshActualSidebarOnlyOnWorkspaceCenter() throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }

@@ -45,7 +45,7 @@ final class ContextMenuTests: XCTestCase {
             XCTAssertEqual(actions, [
                 "openSelection", nil, "previewSelection", "makeFolder", "makeTextFile",
                 "cut:", "copy:", "paste:", "copyToOther", "moveToOther", "beginRename",
-                "trashSelection", "compressSelection", "copyPathSelection", "showInfo",
+                "trashSelection", "compressSelection", "copyPathSelection", "revealOriginalFolder", "showInfo",
                 "openInTerminalAction", "addCurrentFolderToFavorites",
             ].map { $0.map(NSSelectorFromString) })
             func item(_ action: String) -> NSMenuItem {
@@ -83,7 +83,7 @@ final class ContextMenuTests: XCTestCase {
             let preview = URL(fileURLWithPath: "/Applications/Preview.app")
             pane.appsForOpening = { _ in ([textEdit, preview], preview) }
             var opened: ([URL], URL)?
-            pane.openWithApp = { urls, app in opened = (urls, app) }
+            pane.openWithApp = { urls, app, completion in opened = (urls, app); completion(.success(())) }
             pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             let menu = try XCTUnwrap(pane.table.menu)
             pane.refreshMenu(menu)
@@ -116,7 +116,7 @@ final class ContextMenuTests: XCTestCase {
     func testTerminalOpensSelectedFolderOtherwiseCurrentFolder() async throws {
         try await withBrowser(files: ["f.txt"], folders: ["sub"]) { t, pane in
             var opened: [URL] = []
-            pane.openInTerminal = { opened.append($0) }
+            pane.openInTerminal = { url, completion in opened.append(url); completion(.success(())) }
             let entries = pane.session.entries
             let folderRow = try XCTUnwrap(entries.firstIndex { $0.isDirectory })
             let fileRow = try XCTUnwrap(entries.firstIndex { !$0.isDirectory })
@@ -152,10 +152,7 @@ final class ContextMenuTests: XCTestCase {
         )
         let pane = browser.left
         _ = pane.view
-        let deadline = Date().addingTimeInterval(5)
-        while pane.session.isLoading || pane.session.entries.count < 2, Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        await awaitPaneLoad(pane) { pane.session.reload() }
         pane.table.selectAll(nil)
         browser.cut(nil)
         XCTAssertTrue(browser.isCut(left.appendingPathComponent("a.txt")))

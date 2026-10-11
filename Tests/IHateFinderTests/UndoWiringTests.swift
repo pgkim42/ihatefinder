@@ -17,19 +17,10 @@ final class UndoWiringTests: XCTestCase {
     }
 
     @MainActor
-    private func waitUntil(_ message: String, _ predicate: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while !predicate(), Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        XCTAssertTrue(predicate(), message)
-    }
-
-    @MainActor
     private func loaded(_ test: TestBrowser) async throws {
         for pane in [test.browser.left, test.browser.right] {
             _ = pane.view
-            try await waitUntil("pane load") { !pane.session.isLoading && pane.session.revision > 0 }
+            await awaitPaneLoad(pane) { pane.session.reload() }
         }
     }
 
@@ -82,7 +73,8 @@ final class UndoWiringTests: XCTestCase {
         )
         let pane = browser.left
         _ = pane.view
-        try await waitUntil("load") { !pane.session.isLoading && pane.session.entries.count == 3 }
+        await awaitPaneLoad(pane) { pane.session.reload() }
+        XCTAssertEqual(pane.session.entries.count, 3)
         pane.table.selectRowIndexes(IndexSet(integersIn: 0..<3), byExtendingSelection: false)
 
         pane.trashSelection()
@@ -158,8 +150,8 @@ final class UndoWiringTests: XCTestCase {
         try await loaded(test)
         let file = test.left.appendingPathComponent("stay.txt")
         try Data("x".utf8).write(to: file)
-        test.browser.left.session.reload()
-        try await waitUntil("listed") { test.browser.left.session.entries.count == 1 && !test.browser.left.session.isLoading }
+        await awaitPaneLoad(test.browser.left) { test.browser.left.session.reload() }
+        XCTAssertEqual(test.browser.left.session.entries.count, 1)
         test.browser.left.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
 
         test.browser.cut(nil)
@@ -209,5 +201,59 @@ final class UndoWiringTests: XCTestCase {
         XCTAssertEqual(report.items.map(\.status), [.stale])
         XCTAssertEqual(try String(contentsOf: copy, encoding: .utf8), "different")
         XCTAssertEqual(test.browser.undoJournal.count, 0, "A refused item is not re-pushed")
+    }
+
+    @MainActor
+    private func performOperation(_ browser: BrowserWindowController, action: () -> Void) async {
+        let completed = expectation(description: "File operation completed")
+        let previous = browser.onFileOperationStateChange
+        var started = false
+        browser.onFileOperationStateChange = {
+            previous?()
+            if browser.isFileOperationRunning {
+                started = true
+            } else if started {
+                completed.fulfill()
+            }
+        }
+        defer { browser.onFileOperationStateChange = previous }
+        action()
+        await fulfillment(of: [completed], timeout: 5)
+    }
+
+    @MainActor
+    func testBlockedUndoRetainsOnlyRetryableItemAndSucceedsAfterObstructionIsRemoved() async throws {
+        let test = try makeTestBrowser(root: root)
+        try await loaded(test)
+        let blocked = test.left.appendingPathComponent("blocked.txt")
+        let other = test.left.appendingPathComponent("other.txt")
+        try Data("original".utf8).write(to: blocked)
+        try Data("other".utf8).write(to: other)
+        await performOperation(test.browser) {
+            test.browser.drop([blocked, other], onto: test.right, moving: true)
+        }
+        try Data("obstruction".utf8).write(to: blocked)
+
+        await performOperation(test.browser) { test.browser.undoFileOperation() }
+
+        let report = try XCTUnwrap(test.browser.lastUndoReport)
+        XCTAssertEqual(report.undone.count, 1)
+        XCTAssertEqual(report.skipped.count, 1)
+        XCTAssertEqual(test.browser.undoJournal.count, 1)
+        XCTAssertEqual(test.browser.undoJournal.peek?.items.count, 1)
+        XCTAssertEqual(test.browser.undoJournal.peek, report.retryRecord)
+        XCTAssertEqual(try String(contentsOf: blocked, encoding: .utf8), "obstruction")
+        XCTAssertEqual(try String(contentsOf: other, encoding: .utf8), "other")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: test.right.appendingPathComponent("blocked.txt").path))
+
+        if let window = test.browser.window, let sheet = window.attachedSheet { window.endSheet(sheet) }
+        try FileManager.default.removeItem(at: blocked)
+        await performOperation(test.browser) { test.browser.undoFileOperation() }
+
+        XCTAssertEqual(test.browser.lastUndoReport?.undone.count, 1)
+        XCTAssertNil(test.browser.lastUndoReport?.retryRecord)
+        XCTAssertEqual(test.browser.undoJournal.count, 0)
+        XCTAssertEqual(try String(contentsOf: blocked, encoding: .utf8), "original")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: test.right.appendingPathComponent("blocked.txt").path))
     }
 }

@@ -328,7 +328,7 @@ final class FileUndoTests: XCTestCase {
         XCTAssertEqual(try text(other.appendingPathComponent("m.txt")), "m")
     }
 
-    func testCrossVolumeMoveUndoRestoresOriginalFromBinAndTrashesTheCopy() throws {
+    func testCrossVolumeMoveUndoCopiesCurrentItemBackAndTrashesTheCopy() throws {
         let ops = ops(sameVolume: false)
         let file = try write("x.txt", "payload")
         let record = try transferRecord(ops, urls: [file], to: other, moving: true)

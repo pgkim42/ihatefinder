@@ -29,16 +29,10 @@ final class PreviewAndFilterTests: XCTestCase {
         window.contentViewController = pane
         _ = pane.view
         window.contentView?.layoutSubtreeIfNeeded()
-        try await waitUntil("initial load") { !session.isLoading && session.entries.count == files.count + folders.count }
+        await awaitPaneLoad(pane) { session.reload() }
         return Fixture(root: root, window: window, pane: pane, session: session)
     }
 
-    @MainActor
-    private func waitUntil(_ what: String, _ predicate: () -> Bool) async throws {
-        let deadline = Date().addingTimeInterval(5)
-        while !predicate(), Date() < deadline { try await Task.sleep(nanoseconds: 10_000_000) }
-        XCTAssertTrue(predicate(), "Timed out: \(what)")
-    }
 
     private func key(_ keyCode: UInt16, _ characters: String, _ flags: NSEvent.ModifierFlags = []) throws -> NSEvent {
         try XCTUnwrap(NSEvent.keyEvent(
@@ -113,7 +107,7 @@ final class PreviewAndFilterTests: XCTestCase {
         let f = try await makeFixture(files: ["a.txt", "b.txt"], folders: ["dir"])
         defer { try? FileManager.default.removeItem(at: f.root) }
         var opened: [URL] = []
-        f.pane.openFiles = { opened = $0 }
+        f.pane.openFiles = { urls, completion in opened = urls; completion(.success(())) }
         f.pane.table.selectRowIndexes(IndexSet(integersIn: 0..<3), byExtendingSelection: false)
         f.pane.openSelection()
         XCTAssertEqual(opened.map(\.lastPathComponent).sorted(), ["a.txt", "b.txt"])
@@ -125,15 +119,16 @@ final class PreviewAndFilterTests: XCTestCase {
         let f = try await makeFixture(files: [], folders: ["one", "two"])
         defer { try? FileManager.default.removeItem(at: f.root) }
         var opened: [URL] = []
-        f.pane.openFiles = { opened = $0 }
+        f.pane.openFiles = { urls, completion in opened = urls; completion(.success(())) }
         f.pane.table.selectRowIndexes(IndexSet(integersIn: 0..<2), byExtendingSelection: false)
         f.pane.openSelection()
         XCTAssertTrue(opened.isEmpty)
         XCTAssertEqual(f.session.url, f.root)
 
         f.pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-        f.pane.openSelection()
-        try await waitUntil("navigate") { !f.session.isLoading && f.session.url.lastPathComponent == "one" }
+        await awaitPaneLoad(f.pane, expectedURL: f.root.appendingPathComponent("one", isDirectory: true)) {
+            f.pane.openSelection()
+        }
     }
 
     @MainActor
@@ -143,7 +138,7 @@ final class PreviewAndFilterTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: f.root) }
         var opened: [URL] = []
         var asked = 0
-        f.pane.openFiles = { opened = $0 }
+        f.pane.openFiles = { urls, completion in opened = urls; completion(.success(())) }
         f.pane.table.selectAll(nil)
 
         f.pane.confirmOpen = { count in asked = count; return false }
@@ -196,8 +191,8 @@ final class PreviewAndFilterTests: XCTestCase {
         type("sub", into: f.pane)
         XCTAssertEqual(f.pane.table.numberOfRows, 1)
 
-        f.session.navigate(to: f.root.appendingPathComponent("sub"))
-        try await waitUntil("navigate") { !f.session.isLoading && f.session.url.lastPathComponent == "sub" }
+        let sub = f.root.appendingPathComponent("sub", isDirectory: true)
+        await awaitPaneLoad(f.pane, expectedURL: sub) { f.session.navigate(to: sub) }
 
         XCTAssertFalse(f.pane.filterIsVisible)
         XCTAssertFalse(f.pane.filterIsActive)
@@ -213,8 +208,7 @@ final class PreviewAndFilterTests: XCTestCase {
 
         try Data("x".utf8).write(to: f.root.appendingPathComponent("aaa-new.txt"))
         try Data("x".utf8).write(to: f.root.appendingPathComponent("mango.txt"))
-        f.session.reload()
-        try await waitUntil("reload") { !f.session.isLoading && f.session.entries.count == 4 }
+        await awaitPaneLoad(f.pane) { f.session.reload() }
 
         XCTAssertTrue(f.pane.filterIsActive)
         XCTAssertEqual(f.pane.table.numberOfRows, 2)   // banana.txt, mango.txt
@@ -231,10 +225,8 @@ final class PreviewAndFilterTests: XCTestCase {
         try Data("x".utf8).write(to: created)
 
         f.pane.revealAfterReload(created, rename: false)
-        f.session.reload()
-        try await waitUntil("reveal") {
-            !f.session.isLoading && f.pane.selectedURLs().map(\.lastPathComponent) == ["zzz-new.txt"]
-        }
+        await awaitPaneLoad(f.pane) { f.session.reload() }
+        XCTAssertEqual(f.pane.selectedURLs().map(\.lastPathComponent), ["zzz-new.txt"])
 
         XCTAssertFalse(f.pane.filterIsActive)
         XCTAssertFalse(f.pane.filterIsVisible)

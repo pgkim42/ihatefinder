@@ -17,11 +17,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
     private var places: [SidebarItem] = []
     private var focused: FilePaneController
-    private var dual = false
+    private(set) var dual = false
     var busy = false {
         didSet { onFileOperationStateChange?() }
     }
     var onFileOperationStateChange: (() -> Void)?
+    var onBecameActive: (() -> Void)?
+    var onClose: (() -> Void)?
+    var shouldSaveWorkspace: (() -> Bool)?
+    private static let clipboardDidChange = Notification.Name("IHateFinder.clipboardDidChange")
     private let clipboard: FileClipboard
     private let workspaceStore: WorkspaceStore?
     private let favoriteStore: FavoritePlacesStore?
@@ -46,13 +50,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         workspaceStore: WorkspaceStore? = WorkspaceStore(),
         favoriteStore: FavoritePlacesStore? = nil,
         pasteboard: NSPasteboard = .general,
+        clipboard: FileClipboard? = nil,
         makeOps: @escaping () -> FileOps = { FileOps(cloneOnSameVolume: true) },
         initialURLs: (left: URL, right: URL)? = nil
     ) {
         self.workspaceStore = workspaceStore
         self.favoriteStore = favoriteStore ?? (initialURLs == nil ? FavoritePlacesStore() : nil)
         favoritePlaces = self.favoriteStore?.load() ?? []
-        clipboard = FileClipboard(pasteboard: pasteboard)
+        self.clipboard = clipboard ?? FileClipboard(pasteboard: pasteboard)
         let saved = initialURLs == nil ? workspaceStore?.load() : nil
         let leftSession: BrowserSession
         let rightSession: BrowserSession
@@ -73,6 +78,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         window.title = "IHateFinder"
         window.minSize = NSSize(width: 880, height: 540)
         window.titlebarAppearsTransparent = true
@@ -105,6 +111,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             self, selector: #selector(syncClipboard),
             name: NSApplication.didBecomeActiveNotification, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(reloadClipboardTables(_:)),
+            name: Self.clipboardDidChange, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(syncFavorites),
+            name: FavoritePlacesStore.didChangeNotification, object: nil
+        )
     }
 
     @available(*, unavailable)
@@ -121,7 +135,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     func updateStatus() {
-        saveWorkspace()
+        if shouldSaveWorkspace != nil || window?.isKeyWindow == true { saveWorkspace() }
         guard !busy else { return }
         status.stringValue = focused.summary()
         window?.title = focused.session.url.lastPathComponent
@@ -139,7 +153,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     var isFileOperationRunning: Bool { busy }
 
-    func saveWorkspace() {
+    func saveWorkspace(force: Bool = false) {
+        guard force || (shouldSaveWorkspace?() ?? true) else { return }
         workspaceStore?.save(left: left.session, right: right.session, dual: dual)
     }
 
@@ -148,7 +163,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             alert("파일 작업이 진행 중입니다. 작업을 완료하거나 취소한 뒤 닫으십시오.")
             return false
         }
-        saveWorkspace()
         return true
     }
 
@@ -156,8 +170,34 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         canClose()
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        onBecameActive?()
+        syncClipboard()
+        saveWorkspace()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        left.cancelBackgroundWork()
+        right.cancelBackgroundWork()
+        if let onClose {
+            onClose()
+        } else {
+            saveWorkspace()
+        }
+    }
+
+    @objc private func reloadClipboardTables(_ notification: Notification) {
+        guard let changed = notification.object as? FileClipboard, changed === clipboard else { return }
+        reloadTables()
+    }
+
+    private func publishClipboardChange() {
+        NotificationCenter.default.post(name: Self.clipboardDidChange, object: clipboard)
+    }
+
     @objc private func syncClipboard() {
-        if clipboard.synchronize() { reloadTables() }
+        if clipboard.synchronize() { publishClipboardChange() }
+        reloadTables()
     }
 
     func runFocusRepro() -> String {
@@ -238,7 +278,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     func copyPaths(_ urls: [URL]) {
         guard !urls.isEmpty else { return }
         if !clipboard.writeText(MenuState.pathText(urls)) { alert("클립보드에 경로를 기록하지 못했습니다.") }
-        reloadTables()
+        publishClipboardChange()
     }
 
     func isCut(_ url: URL) -> Bool {
@@ -310,6 +350,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         runReporting("되돌리지 못했습니다.", work: { ops.undo(record) }, completion: { [weak self] report in
             guard let self else { return }
             self.lastUndoReport = report
+            self.recordUndo(report.retryRecord)
             for url in report.restoredURLs {
                 let folder = url.deletingLastPathComponent().standardizedFileURL.path
                 for pane in [self.left, self.right] where pane.session.url.path == folder {
@@ -321,7 +362,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             if !skipped.isEmpty || !partial.isEmpty {
                 let lines = (partial + skipped).compactMap(\.message).joined(separator: "\n")
                 let partialText = partial.isEmpty ? "" : ", 일부만 되돌린 항목 \(partial.count)개"
-                self.alert("실행 취소(\(report.title)): 되돌린 항목 \(report.undone.count)개\(partialText), 건너뛴 항목 \(skipped.count)개.\n\(lines)")
+                let retryText = report.retryRecord.map {
+                    "\n다시 시도할 항목 \($0.items.count)개를 남겼습니다. 원인을 해결한 뒤 실행 취소를 다시 누르십시오."
+                } ?? ""
+                self.alert("실행 취소(\(report.title)): 되돌린 항목 \(report.undone.count)개\(partialText), 건너뛴 항목 \(skipped.count)개.\n\(lines)\(retryText)")
             }
         })
     }
@@ -358,6 +402,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
                 self.recordUndo(record)
                 if moving, let snapshot {
                     self.clipboard.consume(report.completedSources, from: snapshot)
+                    self.publishClipboardChange()
                 }
                 self.reloadPanes()
                 self.showTransferResult(report)
@@ -493,6 +538,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc func trashSelection() { focused.trashSelection() }
     @objc func beginRename() { focused.beginRename() }
     @objc func findInFolder() { focused.showFilter() }
+    @objc func showRecursiveSearch() { focused.showRecursiveSearch() }
+    @objc func toggleThumbnails() { focused.toggleThumbnails() }
 
     @objc func previewSelection() {
         guard focused.table.editedRow < 0, !focused.selectedURLs().isEmpty else { return }
@@ -523,6 +570,12 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         default:
             return true
         }
+    }
+
+    @objc private func syncFavorites() {
+        guard let saved = favoriteStore?.load(), saved != favoritePlaces else { return }
+        favoritePlaces = saved
+        refreshPlaces()
     }
 
     @objc func addCurrentFolderToFavorites() {
@@ -585,14 +638,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         guard clipboard.cut(urls) else { alert("클립보드에 파일을 기록하지 못했습니다."); return }
-        reloadTables()
+        publishClipboardChange()
     }
 
     @objc func copy(_ sender: Any?) {
         let urls = focused.selectedURLs()
         guard !urls.isEmpty else { return }
         guard clipboard.copy(urls) else { alert("클립보드에 파일을 기록하지 못했습니다."); return }
-        reloadTables()
+        publishClipboardChange()
     }
 
     @objc func paste(_ sender: Any?) {
@@ -885,7 +938,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     private func clearCut() -> Bool {
         guard clipboard.cancelCut() else { return false }
-        reloadTables()
+        publishClipboardChange()
         return true
     }
 

@@ -16,10 +16,8 @@ final class OpenHandlingTests: XCTestCase {
         let pane = t.browser.left
         _ = pane.view
 
-        t.browser.handleOpen(.reveal(parent: sub, select: sub.appendingPathComponent("b.txt")))
-        let deadline = Date().addingTimeInterval(5)
-        while !(pane.session.url.lastPathComponent == "sub" && pane.selectedURLs().map(\.lastPathComponent) == ["b.txt"]), Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
+        await awaitPaneLoad(pane, expectedURL: sub) {
+            t.browser.handleOpen(.reveal(parent: sub, select: sub.appendingPathComponent("b.txt")))
         }
 
         XCTAssertEqual(pane.session.url.lastPathComponent, "sub")
@@ -36,11 +34,7 @@ final class OpenHandlingTests: XCTestCase {
         let pane = t.browser.left
         _ = pane.view
 
-        t.browser.handleOpen(.showFolder(t.right))
-        let deadline = Date().addingTimeInterval(5)
-        while pane.session.url.lastPathComponent != "right", Date() < deadline {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        await awaitPaneLoad(pane, expectedURL: t.right) { t.browser.handleOpen(.showFolder(t.right)) }
         XCTAssertEqual(pane.session.url.lastPathComponent, "right")
     }
 }
