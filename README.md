@@ -2,16 +2,17 @@
 
 [한국어](README.ko.md)
 
-IHateFinder is a file manager for macOS. It uses a path field, a details list, and cut and paste to move files.
+IHateFinder is a file manager for macOS. Enter a path, find a file, and move it with cut and paste. Use two lists for transfers, or open separate windows for different tasks.
 
-This README uses ASD-STE100 Simplified Technical English.
+- Complete folder paths as you type.
+- Filter the current folder or search its subfolders.
+- Go back to the same selection, scroll position, and filter.
+- Browse image and PDF thumbnails, or open Quick Look.
+- Undo file operations and retry items blocked by a path conflict.
 
-## Requirements
+## Build and run
 
-- macOS 14 or later.
-- The Swift tools that Xcode supplies.
-
-## Build and run the app
+You need macOS 14 or later and the Swift tools supplied with Xcode.
 
 1. Open Terminal in the repository root.
 2. Run the tests:
@@ -26,243 +27,238 @@ This README uses ASD-STE100 Simplified Technical English.
    make run
    ```
 
-`make test` tests the file operations, folder reads, session restore, the clipboard, and the selection. The tests use temporary folders, preferences, and pasteboards. They do not change your files.
+`make run` creates `IHateFinder.app` and signs it for this Mac. Use `make build` if you want to build without opening the app.
 
-`make run` builds `IHateFinder.app`, signs it for this Mac, and opens it.
+macOS can ask for access to Desktop, Documents, Downloads, or connected disks. Choose **Allow** to browse those locations. If access is denied, the app shows an error and keeps the previous folder open.
 
-When the app opens Desktop, Documents, or Downloads for the first time, macOS asks for access. Click **Allow**. If you do not allow access, the app cannot show these folders.
+## Browse folders
 
-## Keys and mouse
+The **focused list** receives keyboard commands and file operations. Click a list or its path field to give it focus.
 
-In this section, "the list" is the details list that has the keyboard focus.
-
-Control does the same thing as Command for the list keys that follow: C, X, V, A, L, F, Shift-N, Option-N, and Shift-period.
-
-### Go to a folder
-
-| Key | Result |
+| Shortcut | Action |
 |---|---|
-| Command-L | Puts the cursor in the path field. |
-| Return (in the path field) | Opens the folder at that path. |
-| Return | Opens the selected file. If you select one folder, the app opens that folder. |
-| Command-Down Arrow | Opens the selection. |
-| Backspace | Goes back. |
-| Command-[ or Option-Left Arrow | Goes back. |
-| Command-] or Option-Right Arrow | Goes forward. |
-| Command-Up Arrow or Option-Up Arrow | Goes up one folder. The app selects the folder that you came from. |
+| Command-L | Edit the path. |
+| Return in the path field | Open the typed path or the selected folder candidate. |
+| Return or Command-Down Arrow in the list | Open the selection. |
+| Backspace, Command-[, or Option-Left Arrow | Go back. |
+| Command-] or Option-Right Arrow | Go forward. |
+| Command-Up Arrow or Option-Up Arrow | Open the parent folder and select the folder you left. |
+| Command-Shift-period | Show or hide hidden items. |
 
-If you select more than one file and push Return, the app opens all the selected files. If you select more than 20 files, the app asks before it opens them. If you select files and folders, the app opens only the files. If you select only folders, and more than one, the app opens nothing and shows a message.
+Use `~` for your home folder. The path field lists matching folders as you type. Use the arrow keys to select a candidate, or press Tab to complete the path. Press Return to open it. Esc closes the candidates; press Esc again to cancel path editing.
 
-### Copy and move
+Back and Forward restore the selection, scroll position, and filter for each visit. Items that no longer exist are not selected.
 
-| Key | Result |
+Return opens one selected folder or all selected files. In a mixed selection, it opens only the files. The app asks before opening more than 20 files. It does not open multiple selected folders together.
+
+### Filter or search
+
+| Shortcut | Scope |
 |---|---|
-| Command-C, then Command-V | Copies the selection to the folder of the list. |
-| Command-X, then Command-V | Moves the selection to the folder of the list. |
-| Esc | Cancels the cut. The items stay on the clipboard as a copy. |
-| F5 | Copies the selection to the other list. |
-| F6 | Moves the selection to the other list. |
+| Command-F or F3 | Filter names in the current folder. |
+| Command-Shift-F | Search names in the current folder and its subfolders. |
 
-If the destination has an item with the same name, select one of these options:
+For a filter, type part of a name. Only matching items stay in the list. The filter does not search subfolders. Its menu command is **이 폴더에서 이름 거르기**.
 
-- **Replace**: The app moves the existing item to the Trash.
-- **Skip**: The app does not copy or move that item.
-- **Keep both**: The app gives the new item a number.
+For a search, choose **하위 폴더에서 이름 검색** or press Command-Shift-F. Results show each item's original location. Right-click a result and choose **원래 폴더에서 보기** to open its folder and select it.
 
-You can copy files between Finder and IHateFinder. Both apps use the system clipboard.
+Search follows the hidden-item setting. It does not follow symbolic links into other folders or search inside app packages. You can open a result or perform file operations on the original item.
 
-### Drag
+Press Return in either field to return focus to the list. Press Esc to clear the filter or leave the search. A new query replaces the previous search; leaving the search cancels it.
 
-- Drag to a folder on the same disk: the app moves the items.
-- Drag to a folder on a different disk: the app copies the items.
-- Hold Option: the app always copies.
-- Hold Command: the app always moves.
+### Two lists and separate windows
 
-### Select and rename
+Choose **양쪽 창** in the View menu or use the toolbar button to show a second list. Each list has its own folder and navigation history. F5 copies the selection to the other list; F6 moves it.
 
-| Key or mouse | Result |
-|---|---|
-| Command-A | Selects all the items. |
-| Control-click | Adds the item to the selection, or removes it. The menu does not open. |
-| Right-click or two-finger tap | Opens the menu. |
-| F2 | Starts a rename. The app selects the name without the extension. |
-| Command-Shift-N | Makes a new folder. Then you can type the name. |
-| Command-Option-N | Makes an empty text file. Then you can type the name. |
-| Command-Shift-period | Shows or hides the hidden files. |
+Press Command-N to open a separate window. Each window has its own lists, selection, and file undo history. The clipboard and favorites are shared across windows.
 
-The default names are `새 폴더` and `새 텍스트 문서.txt`.
-
-### Trash
-
-| Key | Result |
-|---|---|
-| fn-Delete | Moves the selection to the Trash. |
-| Command-Delete | Moves the selection to the Trash. |
-
-The app always moves items to the Trash. The app cannot erase an item from the disk.
-
-Some disks do not have a Trash, for example some network disks and some USB disks. On these disks, the app does not delete the item. The app shows a message.
-
-### Undo
-
-When the list has the focus, Command-Z or Control-Z undoes the last file operation. You can undo these operations: trash, rename, move, copy, new item, and compress.
-
-The undo uses only two safe steps:
-
-- It moves an item back into an empty position.
-- It moves an item to the Trash.
-
-The undo does not write over an item. If an item changed after the operation, the app does not undo that item. The app shows a message.
-
-When you type in a text field, Command-Z or Control-Z undoes the typing. This is also true while you rename an item. The app cannot redo a file operation.
-
-### Preview, filter, and info
-
-| Key | Result |
-|---|---|
-| Space or Command-Y | Opens the preview (Quick Look) of the selection. |
-| Esc (in the preview) | Closes the preview. |
-| Command-F or F3 | Opens the filter field. The list shows only the items whose names contain the text. |
-| Esc (in the filter field) | Clears the filter. |
-| Option-Return | Shows the info of the item: name, kind, size, dates, path, and permissions. |
-
-The filter looks only in the current folder. It does not look in subfolders.
-The Edit menu names this command **이 폴더에서 이름 거르기**. The View menu and the right-click menu also have **미리보기 (Space)**.
-
-### Text fields
-
-In a text field, Command and Control do the same thing for C, X, V, A, and Z. Shift-Z redoes the typing.
-
-### Menu
-
-The right-click menu has these commands:
-
-- **열기** (Open)
-- **다른 앱으로 열기** (Open With)
-- **새 폴더**, **새 텍스트 파일**, **잘라두기**, **복사**, **붙여넣기**, **이름 바꾸기**, **휴지통으로 옮기기**
-- **압축** (Compress): makes `name.zip`. It does not write over an existing file. You can cancel it and undo it.
-- **경로 복사** (Copy Path): copies the full path as text.
-- **정보 보기** (Info)
-- **터미널에서 열기** (Open in Terminal)
-- **반대쪽으로 복사 (F5)** and **반대쪽으로 이동 (F6)**: show the destination folder name. The commands are also in the Edit menu. They are disabled if the second list is hidden, nothing is selected, or a transfer is running.
-- **현재 폴더를 즐겨찾기에 추가** (Add Current Folder to Favorites).
-
-### Two lists
-
-Click **양쪽 창** to show a second list. Click a list to give it the keyboard focus.
+Command-W closes the current window. Closing the last window quits the app. Finish or cancel file operations before closing their window or quitting.
 
 ### Favorites
 
 1. Open a folder in the focused list.
 2. Choose **현재 폴더를 즐겨찾기에 추가** in the File menu or the right-click menu.
-3. Click its sidebar shortcut to open it in the focused list.
-4. Right-click a favorite to choose **즐겨찾기 열기** (Open Favorite), remove it, or move it up or down.
+3. Click the new sidebar shortcut to open that folder.
 
-The app saves the order. Adding the same path twice does not add a second shortcut. Removing a shortcut does not move or delete the folder. Favorites store absolute paths; they do not track a folder renamed or moved by another app.
+Right-click a favorite to open it, remove it, or move it up or down. Changes appear in other open windows and remain after restart.
 
+Adding the same path twice creates only one shortcut. Removing a shortcut does not change the folder. Favorites store paths; they do not track folders moved or renamed by another app.
 
-## Transfers
+## Inspect files
 
-During a copy or a move, the app shows:
+| Command | Action |
+|---|---|
+| Space or Command-Y | Open or close Quick Look for the selection. |
+| Esc in Quick Look | Close Quick Look. |
+| View > **축소판 보기** | Show content thumbnails in larger list rows. Choose it again to return to the details list. |
+| Option-Return | Show information about one selected item. |
 
-- The current file.
-- The number of items.
-- The number of bytes, when this is available.
+Thumbnail rows show image and PDF content alongside the file details. Quick Look remains available in either view.
 
-Click **취소** to stop the transfer. The items that are complete stay complete. The app does not leave a partly written file.
+The info sheet shows the name, kind, dates, path, and permissions. It also shows a file's size or a folder's immediate item count. It does not calculate the total size of a folder or change permissions.
 
-When the app cannot complete all the items, it shows a list. The list shows the skipped, failed, cancelled, and unprocessed items. It also shows the recovery location when it is necessary.
+## Work with files
 
-On the same disk, a copy is very fast and does not use more disk space. The app uses an APFS clone for this.
+### Select, create, and rename
 
-## Folders and restart
+| Shortcut or mouse action | Result |
+|---|---|
+| Command-A | Select all visible items. |
+| Shift-click | Select a range. |
+| Command-click or Control-click | Add or remove one item from the selection. |
+| Right-click or two-finger tap | Open the context menu. |
+| F2 | Rename the selected item. |
+| Command-Shift-N | Create a folder and start editing its name. |
+| Command-Option-N | Create an empty text file and start editing its name. |
 
-The app reads folders in the background. When a different app changes a folder, the list shows the change. The selection stays on the same item.
+Control-click changes the selection; it does not open the menu. While renaming a file, the app selects the name without its extension. Folder names and dotfile names are selected in full.
 
-When you start the app again, it opens the same folders. It also keeps the sort order, the hidden-file setting, and the two-list setting. If a saved folder is not available, the app opens your home folder. If your home folder is not available, the app opens the temporary folder. The app tells you why.
+New items start with the names `새 폴더` and `새 텍스트 문서.txt`. If a name is already in use, the app adds a number.
 
-## Use the app as the default file viewer
+### Copy, move, and drag
 
-This procedure is optional. It changes a setting for all of macOS. The app does not change this setting. You must do these steps yourself.
+| Shortcut | Action |
+|---|---|
+| Command-C, then Command-V | Copy the selection into the focused list's folder. |
+| Command-X, then Command-V | Move the selection into the focused list's folder. |
+| Esc in the list | Cancel a cut after any active filter or search is cleared. The clipboard still contains the files for copying. |
+| F5 | Copy to the other list. |
+| F6 | Move to the other list. |
 
-### Prepare
+F5 and F6 require two visible lists. The same commands are in the Edit menu and the right-click menu, with the destination folder name.
+
+Finder and IHateFinder use the system file clipboard. Files copied from another app are pasted as copies, not moves.
+
+Drag items onto a folder or the other list. On the same disk, the default action is a move. Across disks, it is a copy. Hold Option to copy or Command to move, when the drag source permits that action.
+
+If a name is already in use, choose one option:
+
+- **바꾸기** (Replace): replace the destination item and send the old item to the Trash.
+- **건너뛰기** (Skip): leave that item unchanged.
+- **둘 다 유지** (Keep both): give the incoming item a numbered name.
+
+You can apply the same choice to the remaining conflicts in that transfer.
+
+### Transfer progress and cancellation
+
+During a transfer, the app shows the current item and item count. It shows byte progress when the amount of data is known.
+
+Click **취소** to cancel. Completed items stay complete. Unfinished copies are cleaned up without replacing the original files. If cleanup or recovery fails, the result shows the remaining file locations.
+
+The result distinguishes completed, skipped, failed, cancelled, and unprocessed items. The app stops processing further items after a failure or cancellation.
+
+Where supported, copies on the same APFS volume use clones. These copies initially share data blocks; later edits can require more disk space.
+
+### Trash and undo
+
+Press Command-Delete or fn-Delete to move the selection to the Trash. Backspace alone goes back. The app does not permanently delete files. If a disk does not support Trash, the app reports the problem instead.
+
+Command-Z or Control-Z undoes the last file operation in the current window. Supported operations are Trash, rename, move, copy, create, and compress. Each window keeps up to 50 operations. Closing that window discards its history.
+
+Undo does not overwrite an occupied path. If a path conflict or missing parent folder blocks an item, the app can retain it for retry. Resolve the problem, then choose Undo again. Items already restored are not repeated.
+
+Undoing a move across disks restores the current file contents, including edits made after the move. The older source copy can remain in the Trash. If the app cannot verify an item, or the path now contains a different item, it skips that item and explains why.
+
+File operations have no Redo command. In a text field, Undo and Redo apply to typing instead.
+
+### Other file commands
+
+The right-click menu also provides:
+
+- **다른 앱으로 열기**: choose an app that can open the selected items.
+- **압축**: create a ZIP archive from one selected item without overwriting an existing archive. You can cancel the operation or undo it afterward.
+- **경로 복사**: copy full paths as text. This replaces the clipboard contents and cancels any cut state.
+- **정보 보기**: open the info sheet for one item.
+- **터미널에서 열기**: open Terminal for the selected folder or the current location. For a search result, it uses the original location.
+
+If Open, Open With, or Open in Terminal fails, the app shows the affected path and the reason.
+
+### Control-key alternatives
+
+When the list has focus, Control can replace Command for C, X, V, A, L, F, Z, Shift-N, Option-N, and Shift-period.
+
+In a text field, Command and Control both support C, X, V, A, and Z. Add Shift to Command-Z or Control-Z to redo typing.
+
+## Folder updates and restart
+
+Folder reads run in the background. Changes made by other apps refresh the list. Existing selections remain on the same files; deleted files leave the selection.
+
+On restart, the app restores one saved workspace, not every open window. It keeps the two folder paths, sort settings, hidden-item settings, and two-list setting from the active workspace.
+
+If a saved folder is unavailable, the app tries your home folder, then the temporary folder. It shows the failed path and the reason. Cut state, transfer jobs, and file undo history are not restored.
+
+## Use as the default file viewer
+
+This optional setup changes macOS settings. IHateFinder does not make these changes itself.
+
+### Set up
 
 1. Run `make build`.
-2. Copy `IHateFinder.app` to `/Applications`.
-3. Open the app one time.
-
-### Set
-
-1. Run these commands in Terminal:
+2. Copy `IHateFinder.app` to `/Applications` and open it once.
+3. Run these commands in Terminal:
 
    ```bash
    defaults write -g NSFileViewer -string study.ihatefinder
    defaults write com.apple.LaunchServices/com.apple.launchservices.secure LSHandlers -array-add '{LSHandlerContentType="public.folder";LSHandlerRoleAll="study.ihatefinder";}'
    ```
 
-2. Log out and log in again, or restart the Mac.
+4. Log out and back in, or restart the Mac.
 
-Other apps then send "Show in Finder" and folder requests to IHateFinder:
+Apps that honor these settings can send folder and "Show in Finder" requests to IHateFinder. A folder opens in the focused list. A file request opens its parent folder and selects the file.
 
-- A folder opens in the list that has the focus.
-- A file opens its folder, and the app selects the file.
+This does not replace the system Open and Save dialogs, Desktop, or Finder's Dock icon. Apps that explicitly target Finder can still open Finder.
 
-### Revert
+### Return to Finder
 
-1. Run this command:
+1. Remove the file-viewer setting:
 
    ```bash
    defaults delete -g NSFileViewer
    ```
 
-2. Show the LaunchServices handler list:
+2. Show the folder-handler entries:
 
    ```bash
    /usr/libexec/PlistBuddy -c "Print :LSHandlers" ~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist
    ```
 
-3. Find the entry that has `LSHandlerContentType` = `public.folder` and `LSHandlerRoleAll` = `study.ihatefinder`. Count from 0 to get its index.
-4. Delete that entry. Replace `<index>` with the index from step 3:
+3. Find the entry with `LSHandlerContentType = public.folder` and `LSHandlerRoleAll = study.ihatefinder`. Its index starts at 0.
+4. Remove that entry. Replace `<index>` with its index:
 
    ```bash
    /usr/libexec/PlistBuddy -c "Delete :LSHandlers:<index>" ~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist
    ```
 
-5. Log out and log in again, or restart the Mac. Finder is then the file viewer again.
+5. Log out and back in, or restart the Mac.
 
-### Limits
+Remove only matching IHateFinder entries. If there is more than one, remove them from the highest index to the lowest.
 
-These items continue to use Finder:
+## Current limits
 
-- The Open and Save panels.
-- The Desktop.
-- The Finder icon in the Dock.
-- Apps that send their requests directly to Finder.
+- No tabs, icon grid, or column view.
+- No Redo for file operations.
+- No permanent-delete command.
+- No restoration of all open windows after restart.
 
-## Not in this version
+## Developer checks
 
-This version does not have these functions:
+`make test` covers file operations, navigation, search, completion, window routing, thumbnails, and clipboard behavior. Tests use temporary files, preferences, and pasteboards.
 
-- Tabs.
-- Icon view and column view.
-- Search in subfolders.
-- Redo of a file operation.
+To check which list receives file commands, run:
 
-## Test the right list
+```bash
+swift build && .build/debug/IHateFinder --repro-focus
+```
 
-Use this test to make sure that the keys go to the list that has the focus.
+The output must include:
 
-1. Run this command in the repository root:
+```text
+copied=right-only.txt
+pasteDest=right
+backspace=goBack
+forwardDelete=trash
+```
 
-   ```bash
-   swift build && .build/debug/IHateFinder --repro-focus
-   ```
+This check gives focus to the right list and examines the command targets. It uses temporary files and a separate clipboard. It does not perform the file transfers or save the workspace.
 
-2. Make sure that the output contains these lines:
-
-   - `copied=right-only.txt`
-   - `pasteDest=right`
-   - `backspace=goBack`
-   - `forwardDelete=trash`
-
-The test gives the keyboard focus to the right list. Then it examines the copy source and the target of paste, Delete, and F6. The test does not delete or move files. It uses a separate clipboard. It does not save its session.
+See [the behavior reference](docs/behavior.md) for the detailed interaction rules.
