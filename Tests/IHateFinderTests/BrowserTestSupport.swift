@@ -78,6 +78,8 @@ func awaitPaneLoad(_ pane: FilePaneController, expectedURL: URL? = nil, action: 
         previous?()
         guard !pane.session.isLoading, pane.session.url == target,
               pane.session.revision > revision, !fulfilled else { return }
+        // A queued observer refresh may start another load before the waiter resumes.
+        XCTAssertEqual(pane.session.loadState, .idle)
         fulfilled = true
         completed.fulfill()
     }
@@ -85,5 +87,4 @@ func awaitPaneLoad(_ pane: FilePaneController, expectedURL: URL? = nil, action: 
     action()
     let result = await XCTWaiter.fulfillment(of: [completed], timeout: 5)
     XCTAssertEqual(result, .completed)
-    XCTAssertEqual(pane.session.loadState, .idle)
 }
