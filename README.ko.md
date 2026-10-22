@@ -10,6 +10,22 @@ IHateFinder는 macOS용 파일 관리자입니다. 주소창에 경로를 입력
 - 이미지와 PDF를 축소판으로 보거나 Quick Look을 엽니다.
 - 파일 작업을 되돌립니다. 경로 충돌로 막힌 항목은 원인을 해결한 뒤 다시 시도할 수 있습니다.
 
+## 내려받기
+
+[Releases](https://github.com/pgkim42/ihatefinder/releases) 페이지에서 DMG를 내려받습니다. macOS 14 이상의 Apple silicon 맥과 Intel 맥에서 실행됩니다.
+
+1. DMG를 열고 `IHateFinder.app`을 `Applications`로 끌어다 놓습니다.
+2. 앱을 엽니다. 앱에 Apple Developer ID 서명이 없어서 처음에는 macOS가 실행을 막습니다.
+3. **시스템 설정 > 개인정보 보호 및 보안**을 열고 IHateFinder 옆의 **그래도 열기**를 선택한 뒤 확인합니다.
+
+2번과 3번 대신 터미널에서 다운로드 표시를 지워도 됩니다.
+
+```bash
+xattr -dr com.apple.quarantine /Applications/IHateFinder.app
+```
+
+새 버전을 설치하면 macOS가 폴더 접근 권한을 다시 물을 수 있습니다.
+
 ## 빌드와 실행
 
 macOS 14 이상과 Xcode에 포함된 Swift 도구가 필요합니다.
@@ -28,6 +44,8 @@ macOS 14 이상과 Xcode에 포함된 Swift 도구가 필요합니다.
    ```
 
 `make run`은 `IHateFinder.app`을 만들고 이 맥에서 실행되도록 서명합니다. 앱을 열지 않고 빌드만 하려면 `make build`를 사용합니다.
+
+`make dmg`를 실행하면 Apple silicon과 Intel을 모두 지원하는 앱을 빌드해 `dist/IHateFinder-<버전>.dmg`로 묶습니다. `v0.2.0` 같은 태그를 push하면 GitHub Actions가 DMG를 빌드해 새 릴리스에 첨부합니다.
 
 데스크탑, 문서, 다운로드, 연결된 디스크에 접근할 때 macOS가 권한을 물을 수 있습니다. 해당 위치를 보려면 **허용**을 선택합니다. 접근을 거부하면 오류를 표시하고 이전 폴더에 머뭅니다.
 

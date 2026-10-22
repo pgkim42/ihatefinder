@@ -10,6 +10,22 @@ IHateFinder is a file manager for macOS. Enter a path, find a file, and move it 
 - Browse image and PDF thumbnails, or open Quick Look.
 - Undo file operations and retry items blocked by a path conflict.
 
+## Download
+
+Download the DMG from the [Releases](https://github.com/pgkim42/ihatefinder/releases) page. It runs on macOS 14 or later, on Apple silicon and Intel Macs.
+
+1. Open the DMG and drag `IHateFinder.app` to `Applications`.
+2. Open the app. macOS blocks it the first time because the app has no Apple Developer ID signature.
+3. Open **System Settings > Privacy & Security**, choose **Open Anyway** next to IHateFinder, and confirm.
+
+You can also remove the download flag in Terminal instead of steps 2 and 3:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/IHateFinder.app
+```
+
+After you install a new version, macOS can ask again for access to your folders.
+
 ## Build and run
 
 You need macOS 14 or later and the Swift tools supplied with Xcode.
@@ -28,6 +44,8 @@ You need macOS 14 or later and the Swift tools supplied with Xcode.
    ```
 
 `make run` creates `IHateFinder.app` and signs it for this Mac. Use `make build` if you want to build without opening the app.
+
+Run `make dmg` to build a universal app and put it in `dist/IHateFinder-<version>.dmg`. When you push a tag such as `v0.2.0`, GitHub Actions builds the DMG and attaches it to a new release.
 
 macOS can ask for access to Desktop, Documents, Downloads, or connected disks. Choose **Allow** to browse those locations. If access is denied, the app shows an error and keeps the previous folder open.
 
