@@ -1,0 +1,382 @@
+[
+  {
+    "claim_id": "CG01",
+    "statement": "파일 전송/충돌/취소/undo/Quick Look/filter/외부 변경/restore/open-reveal 기반은 이미 구현돼 있다.",
+    "claim_type": "code",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I2"
+    ],
+    "supporting_observations": [
+      "O1",
+      "O2",
+      "O3",
+      "O4",
+      "OA2",
+      "OA8"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "test-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "current source+test; no runtime-perfect guarantee",
+    "primary_source_backing": [
+      "Source 1",
+      "Source 4",
+      "Source 5",
+      "Source 7"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "summary existing features",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG02",
+    "statement": "고정 장소/디스크/마지막 두 위치 복원은 있으나 사용자 저장 장소와 별도 최근 폴더 선택 목록은 없다.",
+    "claim_type": "code-absence",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I4"
+    ],
+    "supporting_observations": [
+      "O3",
+      "OA5",
+      "OA8",
+      "GUI1"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "desktop-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "positive model/producer/schema scope; primary-code-only exception",
+    "primary_source_backing": [
+      "Source 5",
+      "Source 9",
+      "Source 12"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap personal places",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG03",
+    "statement": "주소창은 직접 입력/~확장을 지원하지만 파일시스템 폴더 후보와 클릭 조상 경로 UI가 없다.",
+    "claim_type": "code-absence",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I4"
+    ],
+    "supporting_observations": [
+      "OA1",
+      "OA3"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "path producer/delegate scope read; primary-only exception",
+    "primary_source_backing": [
+      "Source 10",
+      "Source 13"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap location access",
+    "single_source_exception": "Current product facts/absence: direct model and reachable producers/consumers are authoritative; external copies cannot prove absence."
+  },
+  {
+    "claim_id": "CG04",
+    "statement": "현재 폴더 이름 거르기는 실제 작동하며 하위 폴더/Spotlight 검색은 제품에 없다.",
+    "claim_type": "code+runtime",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I2",
+      "I4"
+    ],
+    "supporting_observations": [
+      "OA1",
+      "GUI3"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "desktop-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "source filtering current entries; docs explicit exclusion",
+    "primary_source_backing": [
+      "Source 10",
+      "Source 11",
+      "Source 14"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap finding unknown location",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG05",
+    "statement": "단일 browser/두 자리는 경로·정렬·숨김·dual을 저장하지만 추가 browser/탭/workspace와 선택·스크롤 영속 필드는 없다. 실제 왕복 스크롤 동작이나 OS 암묵 탭은 주장하지 않는다.",
+    "claim_type": "code-absence",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I5"
+    ],
+    "supporting_observations": [
+      "O2",
+      "O3",
+      "OA5",
+      "GUI2"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "desktop-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "AppDelegate lifetime+menus+schema; AppKit implicit tab UI not asserted",
+    "primary_source_backing": [
+      "Source 4",
+      "Source 5",
+      "Source 17"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap context continuity",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG06",
+    "statement": "상단 네 버튼과 문맥 메뉴에는 반대쪽 복사/이동과 미리보기 직접 명령이 없으며 F5/F6/Space 등에 연결되어 있다.",
+    "claim_type": "code+UI",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I1"
+    ],
+    "supporting_observations": [
+      "OA3",
+      "GUI1",
+      "GUI2"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "desktop-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "exact surfaces only; global hotkeys exist; no actual user confusion claim",
+    "primary_source_backing": [
+      "Source 9",
+      "Source 10",
+      "Source 11",
+      "Source 15"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap discoverability",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG07",
+    "statement": "전송 진행/취소/부분 결과는 있지만 결과는 일회성 text sheet이고 복구 위치 열기/미처리 재시도/결과 재접근 workflow가 없다.",
+    "claim_type": "code",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I1"
+    ],
+    "supporting_observations": [
+      "OA2",
+      "OA6"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "read result producer/consumer; primary-only exception; successful transfers quiet",
+    "primary_source_backing": [
+      "Source 2",
+      "Source 9"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "gap post-operation guidance",
+    "single_source_exception": "Current product facts/absence: direct model and reachable producers/consumers are authoritative; external copies cannot prove absence."
+  },
+  {
+    "claim_id": "CG08",
+    "statement": "직접 목록 공유/태그/디스크 꺼내기/공급자 상태 전용 UX는 확인되지 않는다. Quick Look 공유나 일반 provider 파일 접근 불가능을 뜻하지 않는다.",
+    "claim_type": "scoped-absence",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I1"
+    ],
+    "supporting_observations": [
+      "OA4",
+      "OA8"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "menus/api/model scope; native helper counterexample preserved",
+    "primary_source_backing": [
+      "Source 10",
+      "Source 18"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "conditional mac workflows",
+    "single_source_exception": "Current product facts/absence: direct model and reachable producers/consumers are authoritative; external copies cannot prove absence."
+  },
+  {
+    "claim_id": "CG09",
+    "statement": "clipboard/drag/open/reveal/default-viewer 안내는 있고 Desktop/Dock/Open-Save/직접 Finder 호출까지 완전 교체한다는 근거는 없다.",
+    "claim_type": "code+docs",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I2"
+    ],
+    "supporting_observations": [
+      "O2",
+      "OA4",
+      "OA7"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "apple-platform",
+      "vendors"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "existing positive paths; setup not changed; no universal routing claim",
+    "primary_source_backing": [
+      "Source 4",
+      "Source 6",
+      "Source 18"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "do not chase total replacement",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG10",
+    "statement": "비동기 조회/감시/진행이 구현돼 있으나 대량 폴더 성능 수치를 실측하지 않았다. 현재 느림/정지와 데이터 손실은 주장하지 않는다.",
+    "claim_type": "evidence-bound",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I2"
+    ],
+    "supporting_observations": [
+      "OA6",
+      "O4"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "test-runtime"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "absence of measured evidence; source risk not incident",
+    "primary_source_backing": [
+      "Source 7",
+      "Source 9"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "limits",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG11",
+    "statement": "공통 최소 increment는 기존 F5/F6·Quick Look 및 거르기 범위를 보이게 하는 것. 다음 기본 후보는 내 장소이며 최근 목록/주소 후보/기존 자리 왕복/추가 자리/범위 검색은 별도 선택이다. 위치 미상 파일이면 검색, A/B/C 상태 보존이면 추가 자리, 부분 실패면 결과 action을 먼저 올린다. 측정 순위가 아닌 판단이다.",
+    "claim_type": "recommendation",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I1",
+      "I4",
+      "I5"
+    ],
+    "supporting_observations": [
+      "OA1",
+      "OA3",
+      "OA5",
+      "OA7",
+      "O5"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "independent-reasoning",
+      "vendors"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "explicit product judgment, not empirical user frequency or percent score",
+    "primary_source_backing": [
+      "Source 3",
+      "Source 12",
+      "Source 15",
+      "Source 17"
+    ],
+    "dependencies": [
+      "CG02",
+      "CG03",
+      "CG04",
+      "CG05",
+      "CG06",
+      "CG07"
+    ],
+    "status": "supported",
+    "final_synthesis_location": "priorities and usable contract",
+    "single_source_exception": null
+  },
+  {
+    "claim_id": "CG12",
+    "statement": "mount/unmount의 .default 구독은 NSWorkspace center 계약과 불일치한다. 실행한 것은 synthetic mount dispatch의 center 분리이며, IHateFinder handler 실행이나 실제 물리 mount/unmount UI 실패는 관측하지 않았다.",
+    "claim_type": "source-contract mismatch + synthetic platform proof",
+    "risk_tier": "normal",
+    "scope": "HEAD 0970c61 / researched surfaces only",
+    "intent_ids": [
+      "I3"
+    ],
+    "supporting_observations": [
+      "OA4",
+      "O12"
+    ],
+    "contradicting_observations": [],
+    "independent_observation_groups": [
+      "repo-code",
+      "platform-contract"
+    ],
+    "convergence_status": "converged: first skeptic + two counter-audits + two fresh refiners; precise deltas approved by two new reviewers",
+    "counter_search_result": "primary API plus synthetic runtime; physical mount failure not claimed",
+    "primary_source_backing": [
+      "Source 9",
+      "Source 20",
+      "Source 21"
+    ],
+    "dependencies": [],
+    "status": "supported",
+    "final_synthesis_location": "small reliability defect",
+    "single_source_exception": null
+  }
+]

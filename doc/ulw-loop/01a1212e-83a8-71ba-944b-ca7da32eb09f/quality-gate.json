@@ -1,0 +1,228 @@
+{
+  "tree": "explicit-files",
+  "worktree_diff": "5503368c3c0b3ed921b0e7274f70e1d0274c08700b5a6f641d8cbc102dc5e773",
+  "capture_cwd": "/Users/pgkim/projects/study/ihatefinder",
+  "capture_inputs": [
+    "README.md",
+    "README.ko.md",
+    "CONTEXT.md",
+    "docs/behavior.md",
+    "Support/Info.plist",
+    "Package.swift",
+    "Makefile",
+    "Sources/IHateFinder/InfoPanel.swift",
+    "Sources/IHateFinder/FilePaneController.swift",
+    "Sources/IHateFinder/BrowserWindowController.swift",
+    "Sources/IHateFinder/OpenRequest.swift",
+    "Sources/IHateFinder/KeyCommands.swift",
+    "Sources/IHateFinder/FileTableView.swift",
+    "Sources/IHateFinder/FileClipboard.swift",
+    "Sources/IHateFinder/AppDelegate.swift",
+    "Sources/IHateFinder/main.swift",
+    "Sources/IHateFinderCore/RenameSelection.swift",
+    "Sources/IHateFinderCore/OpenPlan.swift",
+    "Sources/IHateFinderCore/MenuState.swift",
+    "Sources/IHateFinderCore/InfoModel.swift",
+    "Sources/IHateFinderCore/FileUndo.swift",
+    "Sources/IHateFinderCore/FileTransferProgress.swift",
+    "Sources/IHateFinderCore/FileOps.swift",
+    "Sources/IHateFinderCore/EntryFilter.swift",
+    "Sources/IHateFinderCore/DropPolicy.swift",
+    "Sources/IHateFinderCore/Compress.swift",
+    "Sources/IHateFinderCore/DirectoryObserver.swift",
+    "Sources/IHateFinderCore/WorkspaceStore.swift",
+    "Sources/IHateFinderCore/BrowserSession.swift",
+    "doc/ulw-research/20261010-000001/wave-1-NavigationFind.md",
+    "doc/ulw-research/20261010-000001/wave-1-TransferTrust.md",
+    "doc/ulw-research/20261010-000001/wave-1-InteractionSurface.md",
+    "doc/ulw-research/20261010-000001/wave-1-DesktopHandoff.md",
+    "doc/ulw-research/20261010-000001/wave-1-WorkspaceContinuity.md",
+    "doc/ulw-research/20261010-000001/wave-1-ScaleFeedback.md",
+    "doc/ulw-research/20261010-000001/wave-1-ProductAlternatives.md",
+    "doc/ulw-research/20261010-000001/wave-1-Skeptic.md",
+    "doc/ulw-research/20261010-000001/wave-1-InventoryRecon.md",
+    "doc/ulw-research/20261010-000001/wave-1-AppleBaseline.md",
+    "doc/ulw-research/20261010-000001/wave-1-AlternativeDocs.md",
+    "doc/ulw-research/20261010-000001/wave-1-SourceBrowser.md",
+    "doc/ulw-research/20261010-000001/wave-1-NativeRepo.md",
+    "doc/ulw-research/20261010-000001/wave-2-WorkflowCounter.md",
+    "doc/ulw-research/20261010-000001/wave-2-SafetyCounter.md",
+    "doc/ulw-research/20261010-000001/verify-tests.md",
+    "doc/ulw-research/20261010-000001/verify-desktop.md",
+    "doc/ulw-research/20261010-000001/verify-notification.md",
+    "doc/ulw-research/20261010-000001/verify-notification.swift",
+    "doc/ulw-research/20261010-000001/reviewed-sources.json",
+    "doc/ulw-research/20261010-000001/post.md",
+    "doc/ulw-research/20261010-000001/report.html",
+    "doc/ulw-research/20261010-000001/SYNTHESIS.md",
+    "doc/ulw-research/20261010-000001/claim-graph.md",
+    "doc/ulw-research/20261010-000001/claim-nodes.json",
+    "doc/ulw-research/20261010-000001/sources-ledger.md",
+    "doc/ulw-research/20261010-000001/delivery-review.md",
+    "doc/ulw-research/20261010-000001/desktop-browse.png",
+    "doc/ulw-research/20261010-000001/desktop-dual.png",
+    "doc/ulw-research/20261010-000001/desktop-filter.png"
+  ],
+  "manualQa": {
+    "by": "main-session",
+    "status": "passed",
+    "evidence": "Actual native GUI scenarios, executed repo/platform probes and main-session final source/claim review; exact rendered answer and figure inspected. Details doc/ulw-research/20261010-000001/verify-answer.json.",
+    "artifactRefs": [
+      {
+        "id": "intent",
+        "kind": "data-diff",
+        "path": "doc/ulw-research/20261010-000001/intent-diff.md"
+      },
+      {
+        "id": "tests",
+        "kind": "cli-transcript",
+        "path": "doc/ulw-research/20261010-000001/verify-tests.md"
+      },
+      {
+        "id": "desktop",
+        "kind": "screenshot",
+        "path": "doc/ulw-research/20261010-000001/desktop-filter.png"
+      },
+      {
+        "id": "notification",
+        "kind": "cli-transcript",
+        "path": "doc/ulw-research/20261010-000001/verify-notification.md"
+      },
+      {
+        "id": "claims",
+        "kind": "data-diff",
+        "path": "doc/ulw-research/20261010-000001/claim-graph.md"
+      },
+      {
+        "id": "answer",
+        "kind": "screenshot",
+        "path": "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0b091bc71fc.webp"
+      },
+      {
+        "id": "answerfooter",
+        "kind": "screenshot",
+        "path": "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0e61fbc7203.webp"
+      }
+    ],
+    "surfaceEvidence": [
+      {
+        "id": "proof-C1",
+        "criterionRef": "C1",
+        "surface": "data",
+        "invocation": "read FilePaneController.swift:72-82,328-371 and current list producer; compare Apple26/doc evidence; inspect final cited answer",
+        "verdict": "passed",
+        "artifactRefs": [
+          "intent"
+        ]
+      },
+      {
+        "id": "proof-C2",
+        "criterionRef": "C2",
+        "surface": "cli",
+        "invocation": "swift test; read result producer/consumer and recorded 80+160 suites",
+        "verdict": "passed",
+        "artifactRefs": [
+          "tests"
+        ]
+      },
+      {
+        "id": "proof-C3",
+        "criterionRef": "C3",
+        "surface": "gui",
+        "invocation": "System Events AXFocused address typing + AXPress button4 + filter README; screencapture -x -R80,100,1120,748",
+        "verdict": "passed",
+        "artifactRefs": [
+          "desktop"
+        ]
+      },
+      {
+        "id": "proof-C4",
+        "criterionRef": "C4",
+        "surface": "cli",
+        "invocation": "swift doc/ulw-research/20261010-000001/verify-notification.swift; read AppDelegate/plist and scoped API contracts",
+        "verdict": "passed",
+        "artifactRefs": [
+          "notification"
+        ]
+      },
+      {
+        "id": "proof-C5",
+        "criterionRef": "C5",
+        "surface": "data",
+        "invocation": "read WorkspaceStore.swift:3-54 and BrowserWindowController.swift:848-876; close expected/reality rows I4-I5",
+        "verdict": "passed",
+        "artifactRefs": [
+          "intent"
+        ]
+      },
+      {
+        "id": "proof-C6",
+        "criterionRef": "C6",
+        "surface": "data",
+        "invocation": "read ScaleFeedback source report; exclude unmeasured performance conclusions in final graph",
+        "verdict": "passed",
+        "artifactRefs": [
+          "claims"
+        ]
+      },
+      {
+        "id": "proof-C7",
+        "criterionRef": "C7",
+        "surface": "data",
+        "invocation": "read official Apple26/Marta/QSpace/ForkLift excerpts and SHA-pinned native repo observations; compare final source-attributed product directions",
+        "verdict": "passed",
+        "artifactRefs": [
+          "intent"
+        ]
+      },
+      {
+        "id": "proof-C8",
+        "criterionRef": "C8",
+        "surface": "data",
+        "invocation": "read wave-2-summary.md and fresh refinement/recheck reports; inspect CG01-CG12 and explicit unasserted unknown annex",
+        "verdict": "passed",
+        "artifactRefs": [
+          "claims"
+        ]
+      },
+      {
+        "id": "proof-C9",
+        "criterionRef": "C9",
+        "surface": "browser",
+        "invocation": "browser.open ResearchAnswerQA file:///Users/pgkim/projects/study/ihatefinder/doc/ulw-research/20261010-000001/report.html; DOM/screenshot/scroll screenshot; close tab",
+        "verdict": "passed",
+        "artifactRefs": [
+          "answer",
+          "answerfooter"
+        ]
+      }
+    ],
+    "cleanup": [
+      "Released managed tab ResearchAnswerQA; browser.tabs() returned []; source screenshots retained as evidence"
+    ]
+  },
+  "gateReview": {
+    "recommendation": "APPROVE",
+    "by": "DeliveryReview (fresh independent reviewer)",
+    "evidence": "Frozen post/SYNTHESIS match locked scope and exact execution provenance; no meaning-changing Korean defect; EXPAND none.",
+    "reportPath": "doc/ulw-research/20261010-000001/delivery-review.md",
+    "blockers": []
+  },
+  "iteration": {
+    "status": "passed",
+    "fullRerun": true,
+    "evidence": "Final deliverable checks rerun after heading repair: static 0 defects, actual browser render/figure, outcome verify OK, frozen input hash. Earlier swift test remains valid because no product source changed; git diff empty except new research doc/.",
+    "rerunCommands": [
+      "node /Users/pgkim/.omp/agent/extensions/omp-ulw/skills/ulw-research/scripts/report-tools.mjs check doc/ulw-research/20261010-000001/report.html --design-spec doc/ulw-research/20261010-000001/design-spec.md",
+      "node /Users/pgkim/.omp/agent/extensions/omp-ulw/skills/ulw-research/scripts/report-tools.mjs outcome verify --session-dir doc/ulw-research/20261010-000001",
+      "node /Users/pgkim/.omp/agent/extensions/omp-ulw/skills/ulw-loop/scripts/verify-state.mjs snapshot-files doc/ulw-loop/01a1212e-83a8-71ba-944b-ca7da32eb09f/inputs.json"
+    ]
+  },
+  "criteriaCoverage": {
+    "totalCriteria": 9,
+    "passCount": 9,
+    "originalIntent": "내가 쓸만한 0.3 Finder가 되려면 무엇이 아쉬운가?",
+    "desiredOutcome": "현재 구현과 실제 표면에 근거한 부족한 흐름과 구체적 작은 개선 순서",
+    "userOutcomeReview": "The answer diagnoses personal places, path assistance, independent context, scoped finding, action exposure and post-result continuation; preserves existing implemented features and prioritizes conditionally without a fake percent score."
+  }
+}

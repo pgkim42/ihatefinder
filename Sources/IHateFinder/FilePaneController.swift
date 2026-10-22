@@ -6,6 +6,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     let session: BrowserSession
     weak var browser: BrowserWindowController?
     let pathField = NSTextField()
+    let pathControl = NSPathControl()
     let table = FileTableView()
     let filterField = NSSearchField()
     let recursiveSearchField = NSSearchField()
@@ -118,6 +119,17 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         pathField.target = self
         pathField.action = #selector(commitPath)
 
+        pathControl.pathStyle = .standard
+        pathControl.isEditable = false
+        pathControl.focusRingType = .none
+        pathControl.setAccessibilityLabel("현재 폴더 경로")
+        pathControl.target = self
+        pathControl.action = #selector(openPathComponent)
+        pathControl.translatesAutoresizingMaskIntoConstraints = false
+        // This control only navigates; file transfers remain in the list.
+        pathControl.setDraggingSourceOperationMask([], forLocal: true)
+        pathControl.setDraggingSourceOperationMask([], forLocal: false)
+
         table.pane = self
         table.headerView = NSTableHeaderView()
         table.usesAlternatingRowBackgroundColors = false
@@ -205,6 +217,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         card.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(scroll)
         root.addSubview(pathField)
+        root.addSubview(pathControl)
         root.addSubview(filterField)
         root.addSubview(recursiveSearchField)
         root.addSubview(completionScroll)
@@ -215,6 +228,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             pathField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             pathField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             pathField.heightAnchor.constraint(equalToConstant: 32),
+            pathControl.topAnchor.constraint(equalTo: completionScroll.bottomAnchor, constant: 4),
+            pathControl.leadingAnchor.constraint(equalTo: pathField.leadingAnchor),
+            pathControl.trailingAnchor.constraint(equalTo: pathField.trailingAnchor),
+            pathControl.heightAnchor.constraint(equalToConstant: 24),
             filterField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
             filterField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -12),
             card.topAnchor.constraint(equalTo: recursiveSearchField.bottomAnchor, constant: 10),
@@ -234,7 +251,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             recursiveSearchField.leadingAnchor.constraint(equalTo: filterField.leadingAnchor),
             recursiveSearchField.trailingAnchor.constraint(equalTo: filterField.trailingAnchor),
         ])
-        let filterTop = filterField.topAnchor.constraint(equalTo: completionScroll.bottomAnchor, constant: 0)
+        let filterTop = filterField.topAnchor.constraint(equalTo: pathControl.bottomAnchor, constant: 0)
         let filterHeight = filterField.heightAnchor.constraint(equalToConstant: 0)
         filterTopConstraint = filterTop
         filterHeightConstraint = filterHeight
@@ -305,6 +322,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         if pathField.currentEditor() == nil {
             pathField.stringValue = displayedURL.path
         }
+        if pathControl.url?.standardizedFileURL != displayedURL.standardizedFileURL {
+            pathControl.url = displayedURL
+        }
+        pathControl.toolTip = displayedURL.path
         loadStatus.stringValue = summary()
         loadStatus.toolTip = loadStatus.stringValue
         browser?.updateStatus()
@@ -409,6 +430,30 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     func goForward() {
         table.cancelPendingRename()
         _ = session.goForward()
+    }
+
+    @objc private func openPathComponent() {
+        guard let url = pathControl.clickedPathItem?.url else { return }
+        navigatePathComponent(to: url)
+    }
+
+    func navigatePathComponent(to url: URL) {
+        claimFocus()
+        table.cancelPendingRename()
+        dismissCompletions()
+        view.window?.makeFirstResponder(table)
+        let target = url.standardizedFileURL
+        let origin = session.url.standardizedFileURL
+        guard target != origin else { return }
+        // Walk components rather than using string prefixes (e.g. /work and /workspace).
+        var child = origin
+        var parent = child.deletingLastPathComponent()
+        while parent != child && parent != target {
+            child = parent
+            parent = child.deletingLastPathComponent()
+        }
+        session.navigate(to: target)
+        if parent == target { revealAfterReload(child, rename: false) }
     }
 
     func navigateSidebar(_ url: URL) {

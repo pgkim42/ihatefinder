@@ -1,0 +1,48 @@
+{
+  "by": "main-session",
+  "status": "passed",
+  "invocations": [
+    "report-tools check report.html --design-spec design-spec.md",
+    "browser.open ResearchAnswerQA file://.../report.html; evaluate DOM; screenshot first viewport; scroll bottom; screenshot footer; emulate phone attempted; browser.close ResearchAnswerQA; tabs []"
+  ],
+  "observations": {
+    "title": "IHateFinder 일상 대체성 진단",
+    "viewport": [
+      1159,
+      1320
+    ],
+    "bodyWidth": 1159,
+    "headings": [
+      "일상 파일 작업의 연결이 약하다",
+      "가장 아쉬운 부분",
+      "나라면 이렇게 진행한다",
+      "확인된 작은 코드 문제",
+      "조사 방법과 검증",
+      "출처"
+    ],
+    "figureLoaded": true
+  },
+  "screenshots": [
+    "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0b091bc71fc.webp",
+    "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0e61fbc7203.webp"
+  ],
+  "visual_verdict": "PASS: conclusion/sections/Korean type legible; no blank/overlap or horizontal overflow; evidence image contained and uncropped; first and footer captures inspected.",
+  "limits": [
+    "cmux fullPage unavailable; screenshots are viewport only",
+    "Requested 1280x900 not effective; actual 1159x1320",
+    "Phone emulate 390x844 reported requested setting but actual viewport unchanged; mobile verification not claimed; no mobile product surface requested"
+  ],
+  "cleanup": [
+    "Released managed tab ResearchAnswerQA; browser.tabs() returned []; source screenshots retained as evidence"
+  ],
+  "static": {
+    "status": "pass",
+    "defects": [],
+    "counts": {
+      "blocker": 0,
+      "major": 0,
+      "minor": 0,
+      "total": 0
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-10-09T15:33:06.710Z",
+  "budget": {
+    "maxAttempts": 3,
+    "plateauLimit": 2,
+    "wallClockMs": 900000
+  },
+  "integrityCodes": [
+    "broken_asset_reference",
+    "missing_citation_section",
+    "missing_closing_section",
+    "missing_promised_deliverable",
+    "missing_required_section"
+  ],
+  "attempts": [
+    {
+      "at": "2026-10-09T15:33:06.710Z",
+      "measure": [
+        1,
+        0,
+        1
+      ],
+      "signature": "heading_too_long|missing_closing_section",
+      "action": "repair"
+    },
+    {
+      "at": "2026-10-09T15:37:06.002Z",
+      "measure": [
+        0,
+        0,
+        0
+      ],
+      "signature": "",
+      "action": "deliver"
+    }
+  ],
+  "consecutiveNonProgress": 0,
+  "seenSignatures": [
+    "heading_too_long|missing_closing_section",
+    ""
+  ]
+}

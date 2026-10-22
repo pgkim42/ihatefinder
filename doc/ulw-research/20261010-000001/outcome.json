@@ -1,0 +1,45 @@
+{
+	"schemaVersion": 1,
+	"sessionDir": "/Users/pgkim/projects/study/ihatefinder/doc/ulw-research/20261010-000001",
+	"startedAt": "2026-10-09T15:00:01.000Z",
+	"finishedAt": "2026-10-09T15:37:33.359Z",
+	"elapsedMinutes": 38,
+	"lane": "no-format",
+	"interview": null,
+	"deliverables": [
+		{
+			"format": "post",
+			"status": "delivered",
+			"promised": true,
+			"updatedAt": "2026-10-09T15:37:33.238Z",
+			"path": "/Users/pgkim/projects/study/ihatefinder/doc/ulw-research/20261010-000001/post.md",
+			"bytes": 9257
+		}
+	],
+	"renders": [
+		{
+			"path": "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0b091bc71fc.webp",
+			"page": 1
+		},
+		{
+			"path": "/var/folders/mz/fkc2n2lj17b_7nzdw81dzkc40000gn/T/omp-sshots-159fa0e61fbc7203.webp",
+			"page": 2
+		}
+	],
+	"gates": {
+		"static": "pass",
+		"layout": "not_run",
+		"visual": "pass",
+		"proofread": "not_run"
+	},
+	"residualDefects": [],
+	"repair": {
+		"attempts": 2,
+		"action": "deliver",
+		"reason": "clean"
+	},
+	"sources": {
+		"total": 138,
+		"domains": 10
+	}
+}

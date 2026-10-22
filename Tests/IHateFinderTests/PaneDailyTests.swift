@@ -46,6 +46,84 @@ final class PaneDailyTests: XCTestCase {
     }
 
     @MainActor
+    func testPathJumpSelectsImmediateChildAndBackRestoresSelection() async throws {
+        let child = root.appendingPathComponent("한글 space #", isDirectory: true)
+        let deep = child.appendingPathComponent("nested", isDirectory: true)
+        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        let file = deep.appendingPathComponent("keep.txt")
+        try Data("x".utf8).write(to: file)
+        let (pane, session, window) = try await makePane(at: deep)
+        _ = window
+        pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+
+        pane.showFilter()
+        pane.filterField.stringValue = "keep"
+        pane.filterField.sendAction(pane.filterField.action, to: pane)
+        await awaitPaneLoad(pane, expectedURL: root) { pane.navigatePathComponent(to: root) }
+        XCTAssertTrue(pane.filterField.isHidden)
+        XCTAssertEqual(pane.selectedURLs().map(\.standardizedFileURL), [child.standardizedFileURL])
+        XCTAssertEqual(pane.pathControl.url?.standardizedFileURL, root.standardizedFileURL)
+        XCTAssertNil(pane.pendingReveal)
+        await awaitPaneLoad(pane, expectedURL: deep) { pane.goBack() }
+        XCTAssertEqual(pane.selectedURLs().map(\.standardizedFileURL), [file.standardizedFileURL])
+        XCTAssertEqual(pane.pathControl.url?.standardizedFileURL, deep.standardizedFileURL)
+        XCTAssertTrue(session.canGoForward)
+        XCTAssertFalse(pane.filterField.isHidden)
+        XCTAssertEqual(pane.filterField.stringValue, "keep")
+    }
+
+    @MainActor
+    func testFailedPathJumpKeepsCommittedPathAndSelection() async throws {
+        try Data("x".utf8).write(to: root.appendingPathComponent("keep.txt"))
+        let (pane, session, window) = try await makePane(at: root)
+        _ = window
+        pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        let failed = expectation(description: "Navigation failed")
+        let previous = session.onChange
+        session.onChange = {
+            previous?()
+            if case .failed = session.loadState { failed.fulfill() }
+        }
+        defer { session.onChange = previous }
+        pane.navigatePathComponent(to: root.appendingPathComponent("missing"))
+        await fulfillment(of: [failed], timeout: 5)
+        XCTAssertEqual(session.url.standardizedFileURL, root.standardizedFileURL)
+        XCTAssertEqual(pane.pathControl.url?.standardizedFileURL, root.standardizedFileURL)
+        XCTAssertEqual(pane.selectedURLs().map(\.lastPathComponent), ["keep.txt"])
+        XCTAssertFalse(session.canGoBack)
+    }
+
+    @MainActor
+    func testCurrentPathClickPreservesSelectionAndHistory() async throws {
+        try Data("x".utf8).write(to: root.appendingPathComponent("keep.txt"))
+        let (pane, session, window) = try await makePane(at: root)
+        _ = window
+        pane.table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        let revision = session.revision
+        pane.navigatePathComponent(to: root)
+        XCTAssertEqual(pane.selectedURLs().map(\.lastPathComponent), ["keep.txt"])
+        XCTAssertEqual(session.revision, revision)
+        XCTAssertFalse(session.isLoading)
+        XCTAssertFalse(session.canGoBack)
+        XCTAssertTrue(window.firstResponder === pane.table)
+    }
+
+    @MainActor
+    func testPathClickClaimsTheRightPaneWithoutMovingTheLeft() async throws {
+        let test = try makeTestBrowser(root: root)
+        let pane = test.browser.right
+        _ = pane.view
+        await awaitPaneLoad(pane) { pane.session.reload() }
+        test.browser.focus(test.browser.left)
+        await awaitPaneLoad(pane, expectedURL: root) { pane.navigatePathComponent(to: root) }
+        test.browser.findInFolder()
+        XCTAssertFalse(pane.filterField.isHidden)
+        XCTAssertTrue(test.browser.left.filterField.isHidden)
+        XCTAssertEqual(test.browser.left.session.url.standardizedFileURL, test.left.standardizedFileURL)
+        XCTAssertEqual(pane.selectedURLs().map(\.standardizedFileURL), [test.right.standardizedFileURL])
+    }
+
+    @MainActor
     func testRevealAfterReloadSelectsAFileCreatedExternallyAfterTheCall() async throws {
         try Data("x".utf8).write(to: root.appendingPathComponent("existing.txt"))
         let (pane, session, window) = try await makePane(at: root)

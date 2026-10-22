@@ -1,0 +1,13 @@
+{
+  "command": "check",
+  "status": "pass",
+  "exitCode": 0,
+  "layout": "not_run",
+  "defects": [],
+  "counts": {
+    "blocker": 0,
+    "major": 0,
+    "minor": 0,
+    "total": 0
+  }
+}

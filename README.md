@@ -51,6 +51,8 @@ Back and Forward restore the selection, scroll position, and filter for each vis
 
 Return opens one selected folder or all selected files. In a mixed selection, it opens only the files. The app asks before opening more than 20 files. It does not open multiple selected folders together.
 
+Click a folder name below the address field to jump to that location. Jumping to an ancestor selects the child folder on the path you left. Clicking the current folder keeps your selection and history.
+
 ### Filter or search
 
 | Shortcut | Scope |

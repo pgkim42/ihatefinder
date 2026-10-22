@@ -1,0 +1,994 @@
+[
+  {
+    "id": "R1",
+    "url": "https://support.apple.com/guide/mac-help/narrow-search-results-in-finder-mh15155/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R2",
+    "url": "https://support.apple.com/guide/mac-help/go-directly-to-a-specific-folder-on-mac-mchlp1236/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R3",
+    "url": "https://support.apple.com/guide/mac-help/get-file-folder-and-disk-information-on-mac-mchlp1774/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R4",
+    "url": "https://support.apple.com/guide/mac-help/organize-files-with-folders-mh26885/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R5",
+    "url": "https://support.apple.com/guide/mac-help/delete-files-and-folders-on-mac-mchlp1093/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R6",
+    "url": "https://support.apple.com/guide/mac-help/if-you-cant-move-or-copy-an-item-on-mac-mchlp1770/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R7",
+    "url": "https://support.apple.com/guide/mac-help/right-click-mh35853/26/mac/26)은",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R8",
+    "url": "https://support.apple.com/guide/mac-help/customize-the-finder-toolbar-on-mac-mchlp3011/26/mac/26)의",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R9",
+    "url": "https://support.apple.com/guide/mac-help/change-folders-displayed-finder-mac-mchldaafb302/26/mac/26)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R10",
+    "url": "https://support.apple.com/guide/mac-help/use-the-preview-pane-in-the-finder-on-mac-mchl1e4644c2/26/mac/26)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R11",
+    "url": "https://support.apple.com/guide/mac-help/preview-a-file-mh14119/26/mac/26)은",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R12",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace/activatefileviewerselecting(_:).md)에",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R13",
+    "url": "https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R14",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace/activatefileviewerselecting(_:).md",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R15",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace.md)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R16",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace/didmountnotification.md",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R17",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace/didunmountnotification.md)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R18",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace/notificationcenter.md)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R19",
+    "url": "https://developer.apple.com/documentation/appkit/nsworkspace.md)의",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R20",
+    "url": "https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/SysServices/Articles/properties.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R21",
+    "url": "https://support.apple.com/guide/mac-help/use-services-in-apps-mchlp1012/26/mac/26)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R22",
+    "url": "https://support.apple.com/guide/mac-help/use-the-share-menu-on-mac-mh40614/26/mac/26):",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R23",
+    "url": "https://support.apple.com/guide/mac-help/tag-files-and-folders-mchlp15236/26/mac/26):",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R24",
+    "url": "https://support.apple.com/guide/mac-help/work-with-folders-and-files-in-icloud-drive-mchl1a02d711/26/mac/26)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R25",
+    "url": "https://developer.apple.com/documentation/foundation/urlresourcekey/ubiquitousitemdownloadingstatuskey.md)는",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "developer.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R26",
+    "url": "https://support.apple.com/en-in/guide/mac-help/mchl83c9e8b8/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R27",
+    "url": "https://support.apple.com/en-kz/guide/mac-help/mchlp1032/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R28",
+    "url": "https://support.apple.com/guide/mac-help/mchlp1745/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R29",
+    "url": "https://support.apple.com/guide/mac-help/organize-your-files-in-the-finder-mchlp2605/26/mac/26)을",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R30",
+    "url": "https://marta.sh/docs/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R31",
+    "url": "https://marta.sh/docs/core/actions/#action-bar",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R32",
+    "url": "https://marta.sh/docs/advanced/terminal/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R33",
+    "url": "https://marta.sh/docs/actions/goto/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R34",
+    "url": "https://marta.sh/docs/navigation/favorites/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R35",
+    "url": "https://marta.sh/docs/navigation/recent/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R36",
+    "url": "https://marta.sh/docs/actions/lookup/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R37",
+    "url": "https://marta.sh/docs/core/operation-queue/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R38",
+    "url": "https://marta.sh/docs/navigation/base/#show-file-information",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R39",
+    "url": "https://marta.sh/docs/core/file-operations/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R40",
+    "url": "https://qspace.awehunt.com/en-us/guide/workspace.html#concept",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R41",
+    "url": "https://qspace.awehunt.com/en-us/guide/address-bar.html#edit",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R42",
+    "url": "https://qspace.awehunt.com/en-us/faq/howto-set-windows-keys.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R43",
+    "url": "https://qspace.awehunt.com/en-us/guide/search.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R44",
+    "url": "https://qspace.awehunt.com/en-us/guide/extension-stash-shelf.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R45",
+    "url": "https://qspace.awehunt.com/en-us/guide/sidebar.html#customize",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R46",
+    "url": "https://qspace.awehunt.com/en-us/guide/quick-launch.html#new",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R47",
+    "url": "https://qspace.awehunt.com/en-us/guide/qspace-desktop.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R48",
+    "url": "https://qspace.awehunt.com/en-us/faq/differences-between-mas-and-pro.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R49",
+    "url": "https://binarynights.com/manual#introduction",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R50",
+    "url": "https://binarynights.com/#remote-connections",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R51",
+    "url": "https://binarynights.com/manual#sync",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R52",
+    "url": "https://binarynights.com/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R53",
+    "url": "https://binarynights.com/manual#search",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R54",
+    "url": "https://binarynights.com/manual#fileviewer",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R55",
+    "url": "https://magnumbytes.com/#product-focus",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "magnumbytes.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R56",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/main/Docs/Help.md#searching-for-files",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R57",
+    "url": "https://raw.githubusercontent.com/mikekazakov/nimble-commander/main/Docs/Help.md",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "raw.githubusercontent.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R58",
+    "url": "https://magnumbytes.com/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "magnumbytes.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R59",
+    "url": "https://support.apple.com/guide/mac-help/change-finder-settings-on-mac-mchlp2803/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R60",
+    "url": "https://support.apple.com/guide/mac-help/create-or-change-a-smart-folder-on-mac-mchlp2804/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R61",
+    "url": "https://support.apple.com/guide/mac-help/narrow-search-results-in-spotlight-mchl4d69efd3/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R62",
+    "url": "https://support.apple.com/guide/mac-help/customize-the-finder-sidebar-on-mac-mchl83c9e8b8/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R63",
+    "url": "https://support.apple.com/guide/mac-help/aside/glos200755a1/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R64",
+    "url": "https://support.apple.com/guide/mac-help/open-recently-used-items-on-mac-mchlp2724/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R65",
+    "url": "https://support.apple.com/guide/mac-help/ways-quickly-items-finder-mac-mh11493/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R66",
+    "url": "https://support.apple.com/guide/mac-help/change-how-folders-open-in-the-finder-on-mac-mchlp1032/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R67",
+    "url": "https://support.apple.com/guide/mac-help/change-folders-displayed-finder-mac-mchldaafb302/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R68",
+    "url": "https://support.apple.com/guide/mac-help/tag-files-and-folders-mchlp15236/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R69",
+    "url": "https://support.apple.com/guide/mac-help/use-the-preview-pane-in-the-finder-on-mac-mchl1e4644c2/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R70",
+    "url": "https://support.apple.com/guide/mac-help/perform-quick-actions-in-the-finder-on-mac-mchl97ff9142/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R71",
+    "url": "https://support.apple.com/guide/mac-help/use-the-share-menu-on-mac-mh40614/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R72",
+    "url": "https://support.apple.com/guide/mac-help/use-airdrop-to-send-items-to-nearby-devices-mh35868/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R73",
+    "url": "https://support.apple.com/guide/mac-help/share-and-collaborate-on-files-and-folders-mchl91854a7a/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R74",
+    "url": "https://support.apple.com/guide/mac-help/set-up-file-sharing-on-mac-mh17131/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R75",
+    "url": "https://support.apple.com/guide/mac-help/connect-storage-devices-mac-mchl027f1d66/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R76",
+    "url": "https://support.apple.com/guide/mac-help/connect-mac-shared-computers-servers-mchlp1140/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R77",
+    "url": "https://support.apple.com/guide/mac-help/servers-shared-computers-connect-mac-mchlp3015/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R78",
+    "url": "https://support.apple.com/guide/mac-help/check-icloud-drive-file-folder-status-mac-mchlc994344b/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R79",
+    "url": "https://support.apple.com/guide/mac-help/prevent-spotlight-searches-specific-folders-mchl1bb43b84/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R80",
+    "url": "https://support.apple.com/guide/mac-help/searching-mac-returns-unexpected-results-mchlp2962/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R81",
+    "url": "https://support.apple.com/guide/mac-help/eject-a-disk-mac-app-mh27076/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R82",
+    "url": "https://support.apple.com/guide/mac-help/eject-a-disk-user-mac-mh27077/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R83",
+    "url": "https://marta.sh/docs/navigation/favorites/#using-favorites",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R84",
+    "url": "https://marta.sh/docs/core/actions/#actions-panel",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R85",
+    "url": "https://marta.sh/blog/tabs/#tabs-support",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R86",
+    "url": "https://marta.sh/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R87",
+    "url": "https://qspace.awehunt.com/en-us/guide/workspace.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R88",
+    "url": "https://qspace.awehunt.com/zh-cn/guide/workspace.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R89",
+    "url": "https://qspace.awehunt.com/en-us/guide/multi-pane.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R90",
+    "url": "https://qspace.awehunt.com/en-us/guide/address-bar.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R91",
+    "url": "https://blog.binarynights.com/2025/05/27/forklift-4-3-3-is-available/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "blog.binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R92",
+    "url": "https://blog.binarynights.com/2026/06/16/forklift-4-6-4-is-available-brings-improvements-to-file-navigation/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "blog.binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R93",
+    "url": "https://blog.binarynights.com/2026/06/16/forklift-4-6-4-is-available-brings-improvements-to-file-navigation/#comment-13545",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "blog.binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R94",
+    "url": "https://api.github.com/repos/mikekazakov/nimble-commander/commits?path=Docs/Help.md&per_page=1",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "api.github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R95",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/faa0c9715850570ac29e35374eaac39905fc9425/Docs/Help.md#navigation",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R96",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/faa0c9715850570ac29e35374eaac39905fc9425/Docs/Help.md#quick-lists",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R97",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/faa0c9715850570ac29e35374eaac39905fc9425/Docs/Help.md#selection",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R98",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/faa0c9715850570ac29e35374eaac39905fc9425/Docs/Help.md#quick-search",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R99",
+    "url": "https://support.apple.com/en-gb/guide/mac-help/mchlp2605/mac",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R100",
+    "url": "https://support.apple.com/en-gb/guide/mac-help/create-or-change-a-smart-folder-on-mac-mchlp2804/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R101",
+    "url": "https://support.apple.com/en-gb/guide/mac-help/customise-the-finder-sidebar-on-mac-mchl83c9e8b8/26/mac/26",
+    "observed_at": "2026-10-10",
+    "valid_at": "Tahoe 26 docs",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R102",
+    "url": "https://support.apple.com/en-gb/guide/mac-help/mh15155/mac",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "support.apple.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R103",
+    "url": "https://marta.sh/docs/#core-functionality",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R104",
+    "url": "https://marta.sh/docs/#panes-and-navigation",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R105",
+    "url": "https://marta.sh/docs/#useful-actions",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "marta.sh",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R106",
+    "url": "https://qspace.awehunt.com/en-us/index.html",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "qspace.awehunt.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R107",
+    "url": "https://www.binarynights.com/",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "www.binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R108",
+    "url": "https://binarynights.com",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "binarynights.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R109",
+    "url": "https://github.com/mikekazakov/nimble-commander",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R110",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/FavoritesImpl.cpp#L94-L162",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R111",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/FavoritesImpl.cpp#L263-L315",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R112",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/Actions/ShowGoToPopup.mm#L93-L143",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R113",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/Actions/ShowGoToPopup.mm#L333-L472",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R114",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/MainWindowFilePanelState%2BTabsSupport.mm#L136-L236",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R115",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/VFS/source/SearchForFiles.cpp#L117-L200",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R116",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/Actions/FindFiles.mm#L66-L95",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R117",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/Actions/SpotlightSearch.mm#L48-L119",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R118",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/FavoriteComposing.mm#L153-L194",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R119",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/FindFilesSheetController.mm#L400-L550",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R120",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Docs/Help.md#L285-L425",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R121",
+    "url": "https://github.com/mikekazakov/nimble-commander/blob/c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17/Source/NimbleCommander/NimbleCommander/States/FilePanels/FavoritesWindowController.mm#L205-L271",
+    "observed_at": "2026-10-10",
+    "valid_at": "SHA/branch validity in owner report",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R122",
+    "url": "https://api.github.com/repos/mikekazakov/nimble-commander/commits?sha=c6a6f5dbcb7902d7afe5f7ba0f1a4d01a2f2bd17&path=Source%2FVFS%2Fsource%2FSearchForFiles.cpp&per_page=3",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "api.github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R123",
+    "url": "https://github.com/mikekazakov/nimble-commander/commit/28901d8a94feb63eefe776d36f98b77e1fc46873",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  },
+  {
+    "id": "R124",
+    "url": "https://github.com/mikekazakov/nimble-commander/commit/6b809eafedd433250a5f71ba69df33dfa07b62ed",
+    "observed_at": "2026-10-10",
+    "valid_at": "retrieved official reference; owner report separates date/version",
+    "publisher": "github.com",
+    "assertion_scope": "reviewed reference; not all are final asserted premises; unversioned Apple retained as contamination observation only"
+  }
+]
