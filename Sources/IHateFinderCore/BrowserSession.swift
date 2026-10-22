@@ -14,12 +14,26 @@ public final class BrowserSession {
         public var scrollOffset: Double
         public var filter: String
         public var filterVisible: Bool
+        public var search: SearchState?
 
-        public init(selection: Set<URL>, scrollOffset: Double, filter: String, filterVisible: Bool) {
+        public init(selection: Set<URL>, scrollOffset: Double, filter: String, filterVisible: Bool,
+                    search: SearchState? = nil) {
             self.selection = selection
             self.scrollOffset = scrollOffset
             self.filter = filter
             self.filterVisible = filterVisible
+            self.search = search
+        }
+    }
+
+    /// The search root is the URL of the history visit that owns this state.
+    public struct SearchState: Equatable {
+        public var query: String
+        public var includeHidden: Bool
+
+        public init(query: String, includeHidden: Bool) {
+            self.query = query
+            self.includeHidden = includeHidden
         }
     }
 
@@ -31,6 +45,7 @@ public final class BrowserSession {
     public private(set) var entries: [FileEntry] = []
     public private(set) var loadState: LoadState = .idle
     public private(set) var revision = 0
+    public private(set) var isSorting = false
     public private(set) var restorationNotice: String?
     public var onChange: (() -> Void)?
     public var includeHidden = false
@@ -44,6 +59,7 @@ public final class BrowserSession {
     private var observer: DirectoryObserver?
     private var refreshPending = false
     private let listing: ((URL, Bool) throws -> [FileEntry])?
+    private let sorting: ([FileEntry], SortColumn, Bool) -> [FileEntry]
     private let observesChanges: Bool
     private var restoration: Restoration?
     private var requiresInitialCommit = false
@@ -79,10 +95,12 @@ public final class BrowserSession {
     }
 
     init(url: URL, ops: FileOps = FileOps(),
-         listing: ((URL, Bool) throws -> [FileEntry])?, observesChanges: Bool = false) {
+         listing: ((URL, Bool) throws -> [FileEntry])?, observesChanges: Bool = false,
+         sorting: @escaping ([FileEntry], SortColumn, Bool) -> [FileEntry] = { FileOps.sorted($0, by: $1, ascending: $2) }) {
         self.url = URL(fileURLWithPath: url.standardizedFileURL.path, isDirectory: true)
         self.ops = ops
         self.listing = listing
+        self.sorting = sorting
         self.observesChanges = observesChanges
     }
 
@@ -102,8 +120,13 @@ public final class BrowserSession {
     public func navigate(to target: URL) {
         let destination = URL(fileURLWithPath: target.standardizedFileURL.path, isDirectory: true)
         restorationNotice = nil
-        let history: Request.History = destination == url || (requiresInitialCommit && revision == 0) ? .reload : .navigate
-        load(Request(url: destination, history: history, departingState: captureViewState?()))
+        let departing = captureViewState?()
+        let leavingSearch = departing?.search != nil
+        let history: Request.History = (destination == url && !leavingSearch) || (requiresInitialCommit && revision == 0) ? .reload : .navigate
+        // Viewing a result's original folder is a new visit even when it is the search root.
+        let arriving = destination == url && leavingSearch
+            ? ViewState(selection: [], scrollOffset: 0, filter: "", filterVisible: false) : nil
+        load(Request(url: destination, history: history, departingState: departing, arrivingState: arriving))
     }
 
     @discardableResult
@@ -131,10 +154,29 @@ public final class BrowserSession {
     }
 
     public func setSort(_ column: SortColumn, ascending: Bool) {
+        precondition(Thread.isMainThread)
         guard sortColumn != column || self.ascending != ascending else { return }
         sortColumn = column
         self.ascending = ascending
-        reload()
+        if isLoading || revision == 0 {
+            reload()
+        } else {
+            generation += 1
+            let ticket = generation
+            let snapshot = entries
+            let sort = sorting
+            isSorting = true
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let sorted = sort(snapshot, column, ascending)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, ticket == self.generation else { return }
+                    self.entries = sorted
+                    self.isSorting = false
+                    // A reorder does not advance the filesystem revision or replay history.
+                    self.onChange?()
+                }
+            }
+        }
     }
 
     private func load(_ request: Request) {
@@ -143,18 +185,20 @@ public final class BrowserSession {
             restoration = nil
         }
         generation += 1
+        isSorting = false
         let ticket = generation
         pending = request
         loadState = .loading(request.url)
-        let includeHidden = includeHidden
+        let includeHidden = request.arrivingState?.search?.includeHidden ?? includeHidden
         let column = sortColumn
         let ascending = ascending
         let ops = ops
         let list = listing ?? { try ops.list(directory: $0, includeHidden: $1) }
+        let sort = sorting
         onChange?()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try FileOps.sorted(list(request.url, includeHidden), by: column, ascending: ascending)
+                try sort(list(request.url, includeHidden), column, ascending)
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self, ticket == self.generation else { return }
@@ -186,6 +230,7 @@ public final class BrowserSession {
                 backStack.append(Visit(url: url, state: request.departingState))
             }
             restoredViewState = request.arrivingState
+            if let search = request.arrivingState?.search { includeHidden = search.includeHidden }
             let changedDirectory = url != request.url
             url = request.url
             self.entries = entries

@@ -288,7 +288,7 @@ public struct FileOps {
                 guard itemExists(url) else {
                     throw FileOpError("원본 항목이 없습니다.")
                 }
-                guard !contains(dest, inside: url) else {
+                guard try !FileSourceSnapshot.contains(dest, inside: url) else {
                     throw FileOpError("폴더를 그 안으로 옮길 수 없습니다.")
                 }
                 result = try place(url, at: target, moving: moving, resolve: resolve,
@@ -472,6 +472,27 @@ public struct FileOps {
     ) -> FileTransferItemResult {
         let directory = target.deletingLastPathComponent()
         let moveSource = moving && sameVolume(url, directory)
+        let sourceSnapshot: FileSourceSnapshot?
+        do {
+            try cancellation?.check()
+            sourceSnapshot = moving && !moveSource
+                ? try FileSourceSnapshot.read(at: url, fileManager: fm, cancellation: cancellation)
+                : nil
+            // Recheck after conflict resolution, before any destination stage is created.
+            guard try !FileSourceSnapshot.contains(directory, inside: url) else {
+                throw FileOpError("폴더를 그 안으로 옮길 수 없습니다.")
+            }
+        } catch {
+            return FileTransferItemResult(
+                source: url, destination: target,
+                status: error is TransferCancelled ? .cancelled : .failed,
+                message: error.localizedDescription,
+                recovery: FileTransferRecovery(
+                    status: .preserved, locations: replacing ? [url, target] : [url],
+                    message: "원본과 기존 대상은 변경하지 않았습니다."
+                )
+            )
+        }
         if moveSource && !replacing && !stagingMove {
             do {
                 progress?.emit(.committing)
@@ -584,13 +605,30 @@ public struct FileOps {
         var locations: [URL] = []
         var sourceTrashURL: URL?
         var replacedTrashURL: URL?
+        var requiresManualRecovery = false
         if moving && !moveSource {
             do {
-                sourceTrashURL = try moveToTrash(url)
+                guard let sourceSnapshot,
+                      try FileSourceSnapshot.read(at: url, fileManager: fm) == sourceSnapshot else {
+                    throw FileOpError("복사하는 동안 원본 또는 하위 항목이 변경되었습니다.")
+                }
             } catch {
                 status = .failed
-                messages.append("복사본은 만들었지만 원본을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
+                messages.append("원본이 변경되었거나 상태를 확인할 수 없어 원본을 휴지통으로 보내지 않았습니다. 대상의 복사본은 최신 내용과 다를 수 있습니다: \(error.localizedDescription)")
                 locations += [url, target]
+            }
+            if status == .completed {
+                // No progress or user callback between verification and Trash. The OS
+                // has no compare-and-trash primitive; an external writer can still race
+                // this final interval, and directory inventories are not atomic snapshots.
+                do {
+                    sourceTrashURL = try moveToTrash(url)
+                } catch {
+                    status = .failed
+                    requiresManualRecovery = true
+                    messages.append("복사본은 만들었지만 원본을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
+                    locations += [url, target]
+                }
             }
         }
         var preservedBackup = false
@@ -599,6 +637,7 @@ public struct FileOps {
                 replacedTrashURL = try moveToTrash(previous)
             } catch {
                 preservedBackup = true
+                requiresManualRecovery = true
                 messages.append("새 대상은 완성되었지만 기존 대상을 휴지통으로 보내지 못했습니다: \(error.localizedDescription)")
                 locations.append(previous)
             }
@@ -607,13 +646,15 @@ public struct FileOps {
             do {
                 try fm.removeItem(at: stage)
             } catch {
+                requiresManualRecovery = true
                 messages.append("임시 폴더 정리 실패: \(error.localizedDescription)")
                 locations.append(stage)
             }
         }
         let message = messages.isEmpty ? nil : messages.joined(separator: "\n")
         let recovery = message.map {
-            FileTransferRecovery(status: .manualRecoveryRequired, locations: locations, message: $0)
+            FileTransferRecovery(status: requiresManualRecovery ? .manualRecoveryRequired : .preserved,
+                                 locations: locations, message: $0)
         }
         return FileTransferItemResult(
             source: url, destination: target, status: status, message: message, recovery: recovery,
@@ -670,12 +711,5 @@ public struct FileOps {
 
     func stdPath(_ url: URL) -> String {
         url.standardizedFileURL.path
-    }
-
-    private func contains(_ dest: URL, inside ancestor: URL) -> Bool {
-        let destPath = stdPath(dest)
-        let ancestorPath = stdPath(ancestor)
-        if destPath == ancestorPath { return true }
-        return destPath.hasPrefix(ancestorPath.hasSuffix("/") ? ancestorPath : ancestorPath + "/")
     }
 }

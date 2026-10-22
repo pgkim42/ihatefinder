@@ -67,7 +67,7 @@ extension BrowserWindowController {
             }
             var message = result.message
             if report.retryRecord?.items.contains(item) == true {
-                message = [message, "장애물을 제거한 뒤 실행 취소를 다시 시도할 수 있습니다."].compactMap { $0 }.joined(separator: "\n")
+                message = [message, "장애물을 제거한 뒤 편집 > 막힌 실행 취소 다시 시도를 선택할 수 있습니다."].compactMap { $0 }.joined(separator: "\n")
             }
             return FileOperationItem(source: paths.source, destination: paths.destination ?? result.recoveryLocations.first,
                                      status: status, message: message, recoveryLocations: result.recoveryLocations)

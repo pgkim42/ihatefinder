@@ -3,6 +3,16 @@ import IHateFinderCore
 
 /// Both callers receive their completion on the main queue; enumeration never runs there.
 enum DirectoryQueries {
+    struct SearchIssue: Equatable {
+        let url: URL
+        let message: String
+    }
+
+    struct SearchResult {
+        let entries: [FileEntry]
+        let issues: [SearchIssue]
+    }
+
     private static let queue: OperationQueue = {
         let queue = OperationQueue()
         queue.qualityOfService = .userInitiated
@@ -36,31 +46,75 @@ enum DirectoryQueries {
 
     @discardableResult
     static func search(_ root: URL, query: String, includeHidden: Bool,
-                       completion: @escaping (Result<[FileEntry], Error>) -> Void) -> () -> Void {
+                       readValues: @escaping (URL, Set<URLResourceKey>) throws -> URLResourceValues = { try $0.resourceValues(forKeys: $1) },
+                       completion: @escaping (Result<SearchResult, Error>) -> Void) -> () -> Void {
         run({ operation in
-            let keys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey,
-                                            .fileSizeKey, .contentModificationDateKey, .localizedTypeDescriptionKey]
-            var failure: Error?
+            let structureKeys: Set<URLResourceKey> = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isHiddenKey]
+            let metadataKeys: Set<URLResourceKey> = [.fileSizeKey, .contentModificationDateKey, .localizedTypeDescriptionKey]
+            // The explicitly chosen root may itself be a link (including /tmp).
+            // Descendant links still remain leaf entries during enumeration.
+            let traversalRoot = root.resolvingSymlinksInPath()
+            // Foundation may normalize /private/tmp back to the /tmp link.
+            // This check follows that link; URL resource values describe the link itself.
+            var rootIsDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: traversalRoot.path, isDirectory: &rootIsDirectory),
+                  rootIsDirectory.boolValue else {
+                throw FileOpError("폴더를 읽을 수 없습니다: \(root.path)")
+            }
+            var rootFailure: Error?
+            var issues: [SearchIssue] = []
+            var issuePaths: Set<String> = []
+            func record(_ url: URL, _ error: Error) {
+                let url = url.standardizedFileURL
+                guard issuePaths.insert(url.path).inserted else { return }
+                issues.append(SearchIssue(url: url,
+                                          message: (error as? FileOpError)?.message ?? error.localizedDescription))
+            }
             guard let enumerator = FileManager.default.enumerator(
-                at: root, includingPropertiesForKeys: Array(keys),
+                at: traversalRoot, includingPropertiesForKeys: Array(structureKeys),
                 options: includeHidden ? [.skipsPackageDescendants] : [.skipsPackageDescendants, .skipsHiddenFiles],
-                errorHandler: { _, error in failure = error; return false }) else {
+                errorHandler: { url, error in
+                    if url.resolvingSymlinksInPath().path == traversalRoot.path {
+                        rootFailure = error
+                        return false
+                    }
+                    record(url, error)
+                    return !operation.isCancelled
+                }) else {
                 throw FileOpError("폴더를 읽을 수 없습니다: \(root.path)")
             }
             var entries: [FileEntry] = []
             while !operation.isCancelled, let url = enumerator.nextObject() as? URL {
-                let values = try url.resourceValues(forKeys: keys)
+                let values: URLResourceValues
+                do { values = try readValues(url, structureKeys) }
+                catch {
+                    record(url, error)
+                    // The item may be a file. skipDescendants() after a leaf can
+                    // skip the next directory instead. Let enumeration determine
+                    // whether this item's descendants can still be read.
+                    continue
+                }
                 let hidden = values.isHidden == true || url.lastPathComponent.hasPrefix(".")
-                if values.isSymbolicLink == true || (!includeHidden && hidden) { enumerator.skipDescendants() }
-                if !includeHidden && hidden { continue }
+                if !includeHidden && hidden {
+                    if values.isDirectory == true && values.isSymbolicLink != true { enumerator.skipDescendants() }
+                    continue
+                }
                 guard url.lastPathComponent.localizedStandardContains(query) else { continue }
                 let directory = values.isDirectory == true && values.isPackage != true
+                let metadata: URLResourceValues
+                do { metadata = try readValues(url, metadataKeys) }
+                catch {
+                    // Optional metadata for a folder must not prevent visiting its descendants.
+                    record(url, error)
+                    continue
+                }
                 entries.append(FileEntry(url: url.standardizedFileURL, name: url.lastPathComponent, isDirectory: directory,
-                                         size: Int64(values.fileSize ?? 0), modified: values.contentModificationDate ?? .distantPast,
-                                         kind: values.localizedTypeDescription ?? (directory ? "폴더" : "파일"), isHidden: hidden))
+                                         size: Int64(metadata.fileSize ?? 0), modified: metadata.contentModificationDate ?? .distantPast,
+                                         kind: metadata.localizedTypeDescription ?? (directory ? "폴더" : "파일"), isHidden: hidden))
             }
-            if let failure { throw failure }
-            return FileOps.sorted(entries, by: .name, ascending: true)
+            if operation.isCancelled { throw CancellationError() }
+            if let rootFailure { throw rootFailure }
+            return SearchResult(entries: FileOps.sorted(entries, by: .name, ascending: true), issues: issues)
         }, completion: completion)
     }
 

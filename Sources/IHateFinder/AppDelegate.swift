@@ -170,6 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(menu("편집", [
             item("실행 취소", Selector(("undo:")), "z", .command),
             item("다시 실행", Selector(("redo:")), "z", [.command, .shift]),
+            item("막힌 실행 취소 다시 시도", #selector(BrowserWindowController.retryBlockedUndo), "", []),
             .separator(),
             item("잘라두기", #selector(BrowserWindowController.cut(_:)), "x", .command),
             item("복사", #selector(BrowserWindowController.copy(_:)), "c", .command),

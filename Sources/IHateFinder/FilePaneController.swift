@@ -24,9 +24,16 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     private(set) var searchIsRunning = false
     private var searchEntries: [FileEntry] = []
     private var searchGeneration = 0
+    private var searchSortGeneration = 0
+    private var pendingSearchResult: DirectoryQueries.SearchResult?
     private var cancelSearch: (() -> Void)?
     private var searchError: String?
-    var searchFiles = DirectoryQueries.search
+    private var searchIssues: [DirectoryQueries.SearchIssue] = []
+    private var pendingSearchViewState: BrowserSession.ViewState?
+    /// Optional legacy result seam; production searches also report skipped paths.
+    var searchFiles: ((URL, String, Bool, @escaping (Result<[FileEntry], Error>) -> Void) -> () -> Void)?
+    /// Runs on a worker, including when injected by a test.
+    var sortSearchEntries: ([FileEntry], SortColumn, Bool) -> [FileEntry] = { FileOps.sorted($0, by: $1, ascending: $2) }
     var onSearchChange: (() -> Void)?
     private(set) var thumbnailsEnabled = false
     let thumbnails = PaneThumbnails()
@@ -81,9 +88,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             guard let self, self.isViewLoaded else {
                 return BrowserSession.ViewState(selection: [], scrollOffset: 0, filter: "", filterVisible: false)
             }
-            let state = BrowserSession.ViewState(selection: Set(self.selectedURLs()),
-                                                 scrollOffset: Double(self.scroll.contentView.bounds.origin.y),
-                                                 filter: self.filterField.stringValue, filterVisible: self.filterIsVisible)
+            let state = self.currentViewState()
             self.table.cancelPendingRename()
             self.dismissCompletions()
             return state
@@ -271,6 +276,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         guard isViewLoaded else { return }
         if case .failed = session.loadState {
             loadStatus.textColor = .systemRed
+        } else if searchError != nil {
+            loadStatus.textColor = .systemRed
+        } else if !searchIssues.isEmpty {
+            loadStatus.textColor = .systemOrange
         } else {
             loadStatus.textColor = Studio.muted
         }
@@ -279,8 +288,9 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             let sameDirectory = displayedURL == session.url
             let restored = newRevision ? session.restoredViewState : nil
             let selection = restored?.selection ?? editingSelection ?? Set(selectedURLs())
+            let offset = Double(scroll.contentView.bounds.origin.y)
             editingSelection = nil
-            if !sameDirectory {
+            if !sameDirectory || restored != nil {
                 resetFilter()
                 endRecursiveSearch()
                 dismissCompletions()
@@ -290,6 +300,11 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
                 filterField.isHidden = !restored.filterVisible
                 filterTopConstraint?.constant = restored.filterVisible ? 8 : 0
                 filterHeightConstraint?.constant = restored.filterVisible ? 32 : 0
+                if let search = restored.search {
+                    configureRecursiveSearch()
+                    recursiveSearchField.stringValue = search.query
+                    pendingSearchViewState = restored
+                }
             }
             if newRevision {
                 table.cancelPendingRename()
@@ -308,16 +323,18 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
                pending.url.deletingLastPathComponent().standardizedFileURL.path != displayedURL.standardizedFileURL.path {
                 pendingReveal = nil
             }
-            if let restored {
-                view.layoutSubtreeIfNeeded()
-                scroll.contentView.scroll(to: NSPoint(x: 0, y: restored.scrollOffset))
-                scroll.reflectScrolledClipView(scroll.contentView)
+            if let restored, restored.search == nil {
+                restoreScroll(restored.scrollOffset)
             } else if !sameDirectory {
                 view.layoutSubtreeIfNeeded()
                 if !displayedEntries.isEmpty { table.scrollRowToVisible(0) }
+            } else {
+                restoreScroll(offset)
             }
             applyPendingReveal()
-            if newRevision, sameDirectory, recursiveSearchVisible { runRecursiveSearch() }
+            if newRevision, recursiveSearchVisible {
+                runRecursiveSearch(preservingView: sameDirectory && restored == nil)
+            }
         }
         if pathField.currentEditor() == nil {
             pathField.stringValue = displayedURL.path
@@ -392,6 +409,10 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         if recursiveSearchVisible {
             if searchIsRunning { return "하위 폴더 검색 중… \(session.url.path)" }
             if let searchError { return "검색하지 못했습니다: \(searchError)" }
+            if !searchIssues.isEmpty {
+                let details = searchIssues.map { "\($0.url.path): \($0.message)" }.joined(separator: "\n")
+                return "부분 검색 · 확인된 결과 \(displayedEntries.count)개 · 선택 \(selectedURLs().count)개 · 검색하지 못한 경로 \(searchIssues.count)개\n\(details)"
+            }
             return "하위 폴더 검색 \(displayedEntries.count)개 · 선택 \(selectedURLs().count)개 · \(session.url.path)"
         }
         let count = displayedEntries.count
@@ -550,9 +571,25 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: Recursive search and thumbnails
 
+    private func currentViewState() -> BrowserSession.ViewState {
+        BrowserSession.ViewState(selection: pendingSearchViewState?.selection ?? Set(selectedURLs()),
+                                 scrollOffset: pendingSearchViewState?.scrollOffset ?? Double(scroll.contentView.bounds.origin.y),
+                                 filter: filterField.stringValue, filterVisible: filterIsVisible,
+                                 search: recursiveSearchVisible ? .init(query: recursiveSearchField.stringValue,
+                                                                       includeHidden: session.includeHidden) : nil)
+    }
+
     func showRecursiveSearch() {
         _ = view
         resetFilter()
+        configureRecursiveSearch()
+        view.window?.makeFirstResponder(recursiveSearchField)
+        recursiveSearchField.currentEditor()?.selectAll(nil)
+        browser?.focus(self)
+        runRecursiveSearch()
+    }
+
+    private func configureRecursiveSearch() {
         recursiveSearchVisible = true
         recursiveSearchField.isHidden = false
         searchTopConstraint?.constant = 8
@@ -565,53 +602,106 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
             table.addTableColumn(column)
             table.moveColumn(table.numberOfColumns - 1, toColumn: 1)
         }
-        view.window?.makeFirstResponder(recursiveSearchField)
-        recursiveSearchField.currentEditor()?.selectAll(nil)
-        browser?.focus(self)
-        runRecursiveSearch()
     }
 
     @objc func recursiveSearchChanged() {
+        pendingSearchViewState = nil
         runRecursiveSearch()
     }
 
-    private func runRecursiveSearch() {
+    private func runRecursiveSearch(preservingView: Bool = false) {
         guard recursiveSearchVisible else { return }
         searchGeneration += 1
+        searchSortGeneration += 1
+        pendingSearchResult = nil
         let ticket = searchGeneration
         cancelSearch?()
         cancelSearch = nil
         searchError = nil
-        searchEntries = []
+        searchIssues = []
+        if !preservingView { searchEntries = [] }
         thumbnails.invalidate()
         let query = recursiveSearchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         searchIsRunning = !query.isEmpty
-        applyFilter()
-        guard !query.isEmpty else { onSearchChange?(); return }
+        // The table header occupies the clip's top inset; zero would hide the first row.
+        applyFilter(scrollOffset: preservingView ? nil : -Double(scroll.contentView.contentInsets.top))
+        guard !query.isEmpty else { pendingSearchViewState = nil; onSearchChange?(); return }
         let root = session.url
-        cancelSearch = searchFiles(root, query, session.includeHidden) { [weak self] result in
+        let includeHidden = session.includeHidden
+        var queryDidComplete = false
+        let completed: (Result<DirectoryQueries.SearchResult, Error>) -> Void = { [weak self] result in
             guard let self, self.searchGeneration == ticket, self.recursiveSearchVisible,
                   self.session.url == root else { return }
             self.cancelSearch = nil
-            self.searchIsRunning = false
+            queryDidComplete = true
             switch result {
-            case .success(let entries):
-                self.searchEntries = FileOps.sorted(entries, by: self.session.sortColumn, ascending: self.session.ascending)
+            case .success(let report):
+                self.pendingSearchResult = report
+                self.sortRecursiveSearchResults()
             case .failure(let error):
-                self.searchError = error.localizedDescription
+                self.searchSortGeneration += 1
+                self.pendingSearchResult = nil
+                self.pendingSearchViewState = nil
+                self.searchIsRunning = false
+                self.searchEntries = []
+                self.searchError = "\(root.path): \((error as? FileOpError)?.message ?? error.localizedDescription)"
+                self.applyFilter()
+                self.onSearchChange?()
             }
-            self.applyFilter()
-            self.onSearchChange?()
+        }
+        let cancel: () -> Void
+        if let searchFiles {
+            cancel = searchFiles(root, query, includeHidden) { result in
+                completed(result.map { DirectoryQueries.SearchResult(entries: $0, issues: []) })
+            }
+        } else {
+            cancel = DirectoryQueries.search(root, query: query, includeHidden: includeHidden, completion: completed)
+        }
+        if searchGeneration == ticket && !queryDidComplete { cancelSearch = cancel }
+    }
+
+    private func sortRecursiveSearchResults() {
+        guard recursiveSearchVisible else { return }
+        searchSortGeneration += 1
+        let sortTicket = searchSortGeneration
+        let queryTicket = searchGeneration
+        let root = session.url
+        let report = pendingSearchResult
+        let snapshot = report?.entries ?? searchEntries
+        let column = session.sortColumn
+        let ascending = session.ascending
+        let sort = sortSearchEntries
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let sorted = sort(snapshot, column, ascending)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.recursiveSearchVisible, self.session.url == root,
+                      self.searchGeneration == queryTicket, self.searchSortGeneration == sortTicket else { return }
+                self.searchEntries = sorted
+                var restored: BrowserSession.ViewState?
+                if let report {
+                    self.pendingSearchResult = nil
+                    self.searchIssues = report.issues
+                    self.searchIsRunning = false
+                    restored = self.pendingSearchViewState
+                    self.pendingSearchViewState = nil
+                }
+                self.applyFilter(selection: restored?.selection, scrollOffset: restored?.scrollOffset)
+                self.onSearchChange?()
+            }
         }
     }
 
     private func endRecursiveSearch() {
         searchGeneration += 1
+        searchSortGeneration += 1
+        pendingSearchResult = nil
         cancelSearch?()
         cancelSearch = nil
         searchIsRunning = false
         recursiveSearchVisible = false
         searchEntries = []
+        searchIssues = []
+        pendingSearchViewState = nil
         thumbnails.invalidate()
         searchError = nil
         recursiveSearchField.stringValue = ""
@@ -634,9 +724,8 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     @objc func revealOriginalFolder() {
         guard let url = selectedURLs().first else { return }
         let parent = url.deletingLastPathComponent()
-        endRecursiveSearch()
-        pendingReveal = (url, false)
         session.navigate(to: parent)
+        pendingReveal = (url, false)
     }
 
     func toggleThumbnails() {
@@ -693,16 +782,28 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     /// Rebuilds the rows for the current query and keeps the selection of the rows that stay visible.
-    private func applyFilter() {
+    private func applyFilter(selection savedSelection: Set<URL>? = nil, scrollOffset: Double? = nil) {
         guard isViewLoaded, editingRow < 0, table.editedRow < 0 else { return }
-        let selection = Set(selectedURLs())
+        let selection = savedSelection ?? Set(selectedURLs())
+        let offset = scrollOffset ?? Double(scroll.contentView.bounds.origin.y)
         displayedEntries = EntryFilter.filter(recursiveSearchVisible ? searchEntries : session.entries, query: filterField.stringValue)
         table.reloadData()
         let indexes = IndexSet(displayedEntries.indices.filter { selection.contains(displayedEntries[$0].url) })
         table.selectRowIndexes(indexes, byExtendingSelection: false)
+        restoreScroll(offset)
+        loadStatus.textColor = searchError != nil ? .systemRed : (searchIssues.isEmpty ? Studio.muted : .systemOrange)
         loadStatus.stringValue = summary()
         loadStatus.toolTip = loadStatus.stringValue
         browser?.updateStatus()
+    }
+
+    private func restoreScroll(_ offset: Double) {
+        view.layoutSubtreeIfNeeded()
+        let clip = scroll.contentView
+        var bounds = clip.bounds
+        bounds.origin = NSPoint(x: 0, y: offset)
+        clip.scroll(to: clip.constrainBoundsRect(bounds).origin)
+        scroll.reflectScrolledClipView(clip)
     }
 
     // MARK: Quick Look
@@ -875,7 +976,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
     func controlTextDidChange(_ obj: Notification) {
         if (obj.object as? NSSearchField) === filterField { applyFilter() }
         if (obj.object as? NSTextField) === pathField { updatePathCompletions() }
-        if (obj.object as? NSSearchField) === recursiveSearchField { runRecursiveSearch() }
+        if (obj.object as? NSSearchField) === recursiveSearchField { recursiveSearchChanged() }
     }
 
     func controlTextDidEndEditing(_ obj: Notification) {
@@ -906,7 +1007,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         browser?.runReporting("이름을 바꾸지 못했습니다.", operation: .rename,
                               items: [FileOperationItem(source: url, destination: destination, status: .running)], work: {
             let outcome = try ops.rename(url: url, to: newName, resolve: { name in
-                self.browser?.resolveConflict(name) ?? .skip
+                self.browser?.resolveConflict(name, source: url, destination: destination) ?? .skip
             })
             return (outcome, ops.undoRecord(rename: outcome, from: url))
         }, completion: { [weak browser] result, operationID in
@@ -1000,6 +1101,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         guard let descriptor = tableView.sortDescriptors.first,
               let column = SortColumn(rawValue: descriptor.key ?? "") else { return }
         session.setSort(column, ascending: descriptor.ascending)
+        if recursiveSearchVisible { sortRecursiveSearchResults() }
     }
 
     func tableView(

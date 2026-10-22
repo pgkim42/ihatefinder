@@ -114,20 +114,39 @@ public struct FileUndoReport: Equatable {
 /// Main-thread only. Lives for the session and is not persisted.
 public final class FileUndoJournal {
     public static let limit = 50
-    private var records: [UndoRecord] = []
+    private struct Entry {
+        let record: UndoRecord
+        let retry: Bool
+    }
+    private var records: [Entry] = []
 
     public init() {}
 
     public var count: Int { records.count }
-    public var peek: UndoRecord? { records.last }
+    public var peek: UndoRecord? { records.last?.record }
+    public var peekRetry: UndoRecord? { records.last(where: { $0.retry })?.record }
 
     public func push(_ record: UndoRecord) {
-        records.append(record)
+        append(record, retry: false)
+    }
+
+    public func pushRetry(_ record: UndoRecord) {
+        append(record, retry: true)
+    }
+
+    private func append(_ record: UndoRecord, retry: Bool) {
+        records.append(Entry(record: record, retry: retry))
         if records.count > Self.limit { records.removeFirst(records.count - Self.limit) }
     }
 
     public func popLast() -> UndoRecord? {
-        records.popLast()
+        records.popLast()?.record
+    }
+
+    /// Leaves newer repair operations in their normal undo order.
+    public func popRetry() -> UndoRecord? {
+        guard let index = records.lastIndex(where: { $0.retry }) else { return nil }
+        return records.remove(at: index).record
     }
 
     public func clear() {

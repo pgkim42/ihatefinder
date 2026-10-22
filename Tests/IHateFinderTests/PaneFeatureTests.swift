@@ -282,7 +282,11 @@ final class PaneFeatureTests: XCTestCase {
         pane.recursiveSearchChanged()
         let secondEntry = try XCTUnwrap(pane.session.entries.first { $0.url == second })
         let firstEntry = try XCTUnwrap(pane.session.entries.first { $0.url == first })
+        let sorted = expectation(description: "Search result sorted on worker")
+        pane.onSearchChange = { if !pane.searchIsRunning { sorted.fulfill() } }
         callbacks[1](.success([secondEntry]))
+        await fulfillment(of: [sorted], timeout: 5)
+        pane.onSearchChange = nil
         callbacks[0](.success([firstEntry]))
         pane.table.selectAll(nil)
         XCTAssertEqual(pane.selectedURLs(), [second])

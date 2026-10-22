@@ -64,9 +64,9 @@ For a filter, type part of a name. Only matching items stay in the list. The fil
 
 For a search, choose **하위 폴더에서 이름 검색** or press Command-Shift-F. Results show each item's original location. Right-click a result and choose **원래 폴더에서 보기** to open its folder and select it.
 
-Search follows the hidden-item setting. It does not follow symbolic links into other folders or search inside app packages. You can open a result or perform file operations on the original item.
+Search follows the hidden-item setting. If the starting folder is reached through a symbolic link, search uses its real location. It does not follow links found inside that folder or search inside app packages. You can open a result or perform file operations on the original item.
 
-Press Return in either field to return focus to the list. Press Esc to clear the filter or leave the search. A new query replaces the previous search; leaving the search cancels it.
+Press Return in either field to return focus to the list. Press Esc to clear the filter or leave the search. A new query replaces the previous search; leaving the search cancels it. Back and Forward restore the search query and selection. Sorting results preserves the selection without searching the file system again. If a subfolder cannot be read, accessible results remain visible with the skipped locations and reasons.
 
 ### Two lists and separate windows
 
@@ -139,13 +139,17 @@ If a name is already in use, choose one option:
 - **건너뛰기** (Skip): leave that item unchanged.
 - **둘 다 유지** (Keep both): give the incoming item a numbered name.
 
-You can apply the same choice to the remaining conflicts in that transfer.
+The conflict dialog shows both paths, types, sizes, and modification times. Replacing a folder replaces the whole destination folder; it does not merge contents. You can apply the same choice to the remaining conflicts, or choose **전체 작업 취소** to cancel the transfer while keeping completed items.
 
 ### Transfer progress and cancellation
 
 During a transfer, the app shows the current item and item count. It shows byte progress when the amount of data is known.
 
 Click **취소** to cancel. Completed items stay complete. Unfinished copies are cleaned up without replacing the original files. If cleanup or recovery fails, the result shows the remaining file locations.
+
+Cross-volume moves check the source before and after copying. If the source or its descendants changed, or cannot be verified, the original stays in place and the result explains the preserved locations. Copying or moving a folder into itself is rejected even through a symbolic link.
+
+Moving to another volume is stopped if the source disk does not provide stable file identifiers, as with macOS FAT/exFAT volumes. Use Copy, check the copied files, then remove the originals yourself.
 
 The result distinguishes completed, skipped, failed, cancelled, and unprocessed items. The app stops processing further items after a failure or cancellation.
 
@@ -157,7 +161,7 @@ Press Command-Delete or fn-Delete to move the selection to the Trash. Backspace 
 
 Command-Z or Control-Z undoes the last file operation in the current window. Supported operations are Trash, rename, move, copy, create, and compress. Each window keeps up to 50 operations. Closing that window discards its history.
 
-Undo does not overwrite an occupied path. If a path conflict or missing parent folder blocks an item, the app can retain it for retry. Resolve the problem, then choose Undo again. Items already restored are not repeated.
+Undo does not overwrite an occupied path. If a path conflict or missing parent folder blocks an item, the app can retain it for retry. Resolve the problem, then choose **Edit > 막힌 실행 취소 다시 시도** (Retry blocked undo). This retries the blocked operation without undoing a rename or move used to clear the obstruction. Items already restored are not repeated.
 
 Undoing a move across disks restores the current file contents, including edits made after the move. The older source copy can remain in the Trash. If the app cannot verify an item, or the path now contains a different item, it skips that item and explains why.
 

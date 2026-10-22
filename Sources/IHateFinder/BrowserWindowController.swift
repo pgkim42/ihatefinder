@@ -35,6 +35,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private var rememberedChoice: NameConflict?
     /// Supplies the user's conflict choice in tests; file operations still run normally.
     var conflictResolver: ((String) -> NameConflict)?
+    var conflictDecision: ((FileConflictContext) -> FileConflictDecision)?
     let undoJournal = FileUndoJournal()
     var operationHistory: FileOperationHistory
     let historyWindowID = UUID()
@@ -293,11 +294,14 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         clipboard.isCut(url)
     }
 
-    func resolveConflict(_ name: String) -> NameConflict {
-        if Thread.isMainThread {
-            return askConflict(name)
-        }
-        return DispatchQueue.main.sync { self.askConflict(name) }
+    func resolveConflict(_ name: String, source: URL, destination: URL,
+                         cancellation: FileTransferCancellation? = nil) -> NameConflict {
+        let context = FileConflictContext(source: source, destination: destination)
+        let choose = { self.askConflict(context, canCancelTransfer: cancellation != nil) }
+        let decision = Thread.isMainThread ? choose() : DispatchQueue.main.sync(execute: choose)
+        if let choice = decision.choice { return choice }
+        cancellation?.cancel()
+        return .skip
     }
 
     func failureMessage(_ error: Error, _ failure: String) -> String {
@@ -373,13 +377,22 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             return
         }
         guard let record = undoJournal.popLast() else { return }
+        performUndo(record)
+    }
+
+    @objc func retryBlockedUndo() {
+        guard !busy, let record = undoJournal.popRetry() else { return }
+        performUndo(record)
+    }
+
+    private func performUndo(_ record: UndoRecord) {
         let ops = focused.session.ops
         runReporting("되돌리지 못했습니다.", operation: .undo, items: record.items.reversed().map(Self.historyItem),
                      parentID: record.operationID, work: { ops.undo(record) }, completion: { [weak self] report, operationID in
             guard let self else { return }
             self.lastUndoReport = report
             self.finishOperation(operationID, items: Self.historyItems(report, record: record))
-            self.recordUndo(report.retryRecord)
+            if let retry = report.retryRecord { self.undoJournal.pushRetry(retry) }
             for url in report.restoredURLs {
                 let folder = url.deletingLastPathComponent().standardizedFileURL.path
                 for pane in [self.left, self.right] where pane.session.url.path == folder {
@@ -392,7 +405,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
                 let lines = (partial + skipped).compactMap(\.message).joined(separator: "\n")
                 let partialText = partial.isEmpty ? "" : ", 일부만 되돌린 항목 \(partial.count)개"
                 let retryText = report.retryRecord.map {
-                    "\n다시 시도할 항목 \($0.items.count)개를 남겼습니다. 원인을 해결한 뒤 실행 취소를 다시 누르십시오."
+                    "\n다시 시도할 항목 \($0.items.count)개를 남겼습니다. 원인을 해결한 뒤 편집 > 막힌 실행 취소 다시 시도를 선택하십시오."
                 } ?? ""
                 self.alert("실행 취소(\(report.title)): 되돌린 항목 \(report.undone.count)개\(partialText), 건너뛴 항목 \(skipped.count)개.\n\(lines)\(retryText)")
             }
@@ -404,6 +417,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     private func runTransfer(urls: [URL], to destination: URL, moving: Bool, pasting: Bool = false, clipboardSnapshot: FileClipboard.Snapshot? = nil) {
+        guard !urls.isEmpty else { return }
         guard !busy else {
             alert("파일 작업이 진행 중입니다. 완료한 뒤 다시 시도하십시오.")
             return
@@ -423,10 +437,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         DispatchQueue.global(qos: .userInitiated).async {
             let report: FileTransferReport
             let record: UndoRecord?
+            // Progress and conflict callbacks run serially on this worker. Each preparing
+            // event identifies the source even when several sources have the same name.
+            var currentSource = urls.first!
+            let trackProgress: (FileTransferProgress) -> Void = { sample in
+                currentSource = sample.source
+                progress(sample)
+            }
+            let resolve: (String) -> NameConflict = { name in
+                self.resolveConflict(name, source: currentSource,
+                                     destination: destination.appendingPathComponent(name), cancellation: cancellation)
+            }
             if pasting {
-                report = ops.paste(urls: urls, cut: moving, into: destination, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
+                report = ops.paste(urls: urls, cut: moving, into: destination, resolve: resolve, cancellation: cancellation, progress: trackProgress)
             } else {
-                report = ops.transfer(urls: urls, to: destination, moving: moving, resolve: self.resolveConflict, cancellation: cancellation, progress: progress)
+                report = ops.transfer(urls: urls, to: destination, moving: moving, resolve: resolve, cancellation: cancellation, progress: trackProgress)
             }
             record = ops.undoRecord(transfer: report, moving: moving)
             DispatchQueue.main.async {
@@ -599,6 +624,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(retryBlockedUndo):
+            let record = undoJournal.peekRetry
+            menuItem.title = "막힌 실행 취소 다시 시도" + (record.map { " — \($0.title)" } ?? "")
+            return !busy && record != nil
         case #selector(copyToOther), #selector(moveToOther):
             return configureTransferMenuItem(menuItem)
         case #selector(previewSelection):
@@ -992,26 +1021,32 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         right.table.reloadData()
     }
 
-    private func askConflict(_ name: String) -> NameConflict {
-        if let rememberedChoice { return rememberedChoice }
-        if let conflictResolver { return conflictResolver(name) }
-        let alert = NSAlert()
-        alert.messageText = "같은 이름이 있습니다"
-        alert.informativeText = name
-        alert.addButton(withTitle: "바꾸기")
-        alert.addButton(withTitle: "건너뛰기")
-        alert.addButton(withTitle: "둘 다 유지")
+    private func askConflict(_ context: FileConflictContext, canCancelTransfer: Bool) -> FileConflictDecision {
+        func decision(_ choice: NameConflict) -> FileConflictDecision {
+            switch choice {
+            case .replace: return .replace
+            case .skip: return .skip
+            case .keepBoth: return .keepBoth
+            }
+        }
+        if let rememberedChoice { return decision(rememberedChoice) }
+        if let conflictDecision { return conflictDecision(context) }
+        if let conflictResolver { return decision(conflictResolver(context.destination.url.lastPathComponent)) }
+        let alert = context.makeAlert(canCancelTransfer: canCancelTransfer)
         let check = NSButton(checkboxWithTitle: "남은 항목에도 적용", target: nil, action: nil)
-        check.frame = NSRect(x: 0, y: 0, width: 240, height: 20)
-        alert.accessoryView = check
+        if canCancelTransfer, let stack = alert.accessoryView as? NSStackView {
+            stack.addArrangedSubview(check)
+            stack.setFrameSize(stack.fittingSize)
+        }
         let response = alert.runModal()
-        let choice: NameConflict
+        let choice: FileConflictDecision
         switch response {
         case .alertFirstButtonReturn: choice = .replace
         case .alertSecondButtonReturn: choice = .skip
-        default: choice = .keepBoth
+        case .alertThirdButtonReturn: choice = .keepBoth
+        default: choice = .cancel
         }
-        if check.state == .on { rememberedChoice = choice }
+        if check.state == .on, let remembered = choice.choice { rememberedChoice = remembered }
         return choice
     }
 

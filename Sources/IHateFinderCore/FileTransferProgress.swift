@@ -107,6 +107,7 @@ enum NativeFileCopy {
     private final class Context {
         let cancellation: FileTransferCancellation?
         let progress: (FileCopyProgress) -> Void
+        let rootPath: String
         var file: URL
         var path: String
         var total: Int64?
@@ -115,6 +116,7 @@ enum NativeFileCopy {
              progress: @escaping (FileCopyProgress) -> Void) {
             self.file = source
             self.path = source.path
+            self.rootPath = source.path
             self.cancellation = cancellation
             self.progress = progress
         }
@@ -130,6 +132,14 @@ enum NativeFileCopy {
             context.path = String(cString: source)
             context.file = URL(fileURLWithPath: context.path)
             context.total = nil
+        }
+        // FAT exposes its AppleDouble xattr storage to copyfile's raw traversal.
+        // COPYFILE_ALL already copies that metadata with the owning item; copying
+        // the sidecar again collides with the newly generated destination sidecar.
+        // An explicitly selected sidecar remains an ordinary file copy.
+        if what == COPYFILE_RECURSE_FILE, stage == COPYFILE_START,
+           context.path != context.rootPath, isFATAppleDouble(context.file) {
+            return context.cancellation?.isCancelled == true ? COPYFILE_QUIT : COPYFILE_SKIP
         }
         if what == COPYFILE_COPY_DATA {
             if stage == COPYFILE_START || context.total == nil {
@@ -159,6 +169,50 @@ enum NativeFileCopy {
     static func cloneCopy(_ source: URL, _ destination: URL, _ cancellation: FileTransferCancellation?,
                           _ progress: @escaping (FileCopyProgress) -> Void) throws {
         try perform(source, destination, cancellation, progress, clone: true)
+    }
+
+    private static func isFATAppleDouble(_ file: URL) -> Bool {
+        let name = file.lastPathComponent
+        guard name.hasPrefix("._"), name.count > 2 else { return false }
+        let ownerName = String(name.dropFirst(2))
+        guard ownerName != ".", ownerName != ".." else { return false }
+        // Fail closed on unreadable, non-regular, orphaned or malformed files.
+        // In particular, never discard arbitrary user files named ._something.
+        let descriptor = open(file.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        var info = stat()
+        var volume = statfs()
+        guard fstat(descriptor, &info) == 0,
+              info.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),
+              fstatfs(descriptor, &volume) == 0 else { return false }
+        let fileSystem = withUnsafePointer(to: &volume.f_fstypename) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MFSTYPENAMELEN)) { String(cString: $0) }
+        }
+        guard fileSystem == "exfat" || fileSystem == "msdos" else { return false }
+        var owner = stat()
+        let ownerPath = file.deletingLastPathComponent().appendingPathComponent(ownerName).path
+        guard lstat(ownerPath, &owner) == 0,
+              [mode_t(S_IFREG), mode_t(S_IFDIR)].contains(owner.st_mode & mode_t(S_IFMT)) else { return false }
+
+        // macOS accepts v2 FinderInfo/xattrs with an optional resource fork.
+        // Filler is not a signature; gaps and trailing bytes are permitted.
+        // Keep bounds checks, and let COPYFILE_ALL copy the metadata as macOS
+        // exposes it, including the named resource fork's bytes.
+        var header = [UInt8](repeating: 0, count: 50)
+        guard read(descriptor, &header, header.count) == header.count else { return false }
+        func word(_ offset: Int) -> UInt64 {
+            header[offset..<(offset + 4)].reduce(0) { ($0 << 8) | UInt64($1) }
+        }
+        guard word(0) == 0x00051607, word(4) == 0x00020000,
+              header[24] == 0, (1...2).contains(header[25]),
+              word(26) == 9, word(30) == 50, word(34) >= 32,
+              50 + word(34) <= UInt64(info.st_size) else { return false }
+        if header[25] == 2 {
+            guard word(38) == 2, word(42) >= 50 + word(34),
+                  word(42) + word(46) <= UInt64(info.st_size) else { return false }
+        }
+        return true
     }
 
     private static func perform(_ source: URL, _ destination: URL, _ cancellation: FileTransferCancellation?,
