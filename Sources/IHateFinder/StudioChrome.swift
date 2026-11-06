@@ -163,7 +163,7 @@ final class StudioTextButton: NSButton {
         NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
         let text = NSAttributedString(string: title, attributes: [
             .font: font as Any,
-            .foregroundColor: Studio.ink,
+            .foregroundColor: isEnabled ? Studio.ink : Studio.muted,
         ])
         let size = text.size()
         text.draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))

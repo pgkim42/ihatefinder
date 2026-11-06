@@ -115,6 +115,8 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         view.window?.firstResponder === table
     }
 
+    var isRenaming: Bool { editingRow >= 0 }
+
     override func loadView() {
         let root = StudioCanvas()
         StudioField.stylePath(pathField, placeholder: "경로를 입력하거나 Command-L을 누르세요")
@@ -863,6 +865,7 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         let entry = displayedEntries[row]
         let range = RenameSelection.range(name: entry.name, isDirectory: entry.isDirectory)
         (view.window?.firstResponder as? NSTextView)?.setSelectedRange(range)
+        browser?.updateStatus()
         onRenameStart?()
     }
 
@@ -1094,6 +1097,12 @@ final class FilePaneController: NSViewController, NSTableViewDataSource, NSTable
         loadStatus.stringValue = summary()
         loadStatus.toolTip = loadStatus.stringValue
         browser?.updateStatus()
+    }
+
+    /// Native type-to-select. View-based tables have no cell string to match, so the shown name is supplied.
+    func tableView(_ tableView: NSTableView, typeSelectStringFor tableColumn: NSTableColumn?, row: Int) -> String? {
+        guard tableView === table, displayedEntries.indices.contains(row) else { return nil }
+        return displayedEntries[row].name
     }
 
     func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {

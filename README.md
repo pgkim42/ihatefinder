@@ -53,19 +53,26 @@ macOS can ask for access to Desktop, Documents, Downloads, or connected disks. C
 
 The **focused list** receives keyboard commands and file operations. Click a list or its path field to give it focus.
 
+Buttons above the lists expose New Folder, Cut, Copy, Paste, Rename, Trash, Quick Look, and Search Subfolders. They follow the focused list and enable according to selection and operation state. File actions are disabled during rename; creation and paste buttons are disabled in search results.
+
 | Shortcut | Action |
 |---|---|
-| Command-L | Edit the path. |
+| Command-L, Control-L, or Option-D | Edit the path. |
 | Return in the path field | Open the typed path or the selected folder candidate. |
 | Return or Command-Down Arrow in the list | Open the selection. |
 | Backspace, Command-[, or Option-Left Arrow | Go back. |
 | Command-] or Option-Right Arrow | Go forward. |
 | Command-Up Arrow or Option-Up Arrow | Open the parent folder and select the folder you left. |
 | Command-Shift-period | Show or hide hidden items. |
+| Command-R or Control-R | Refresh the current list and expanded sidebar folders. |
 
 Use `~` for your home folder. The path field lists matching folders as you type. Use the arrow keys to select a candidate, or press Tab to complete the path. Press Return to open it. Esc closes the candidates; press Esc again to cancel path editing.
 
 Back and Forward restore the selection, scroll position, and filter for each visit. Items that no longer exist are not selected.
+
+Expand a sidebar arrow to inspect subfolders without navigating. Click a folder name to open it in the focused list. The tree loads one level at a time in the background and follows the hidden-item setting. It excludes app packages and does not expand symbolic links. A read error appears at the affected location; Refresh retries it.
+
+Type the beginning of a name while the list has focus to select a matching visible item, including filtered lists and search results. Copy and Cut preserve the selection and scroll position.
 
 Return opens one selected folder or all selected files. In a mixed selection, it opens only the files. The app asks before opening more than 20 files. It does not open multiple selected folders together.
 
@@ -76,7 +83,7 @@ Click a folder name below the address field to jump to that location. Jumping to
 | Shortcut | Scope |
 |---|---|
 | Command-F or F3 | Filter names in the current folder. |
-| Command-Shift-F | Search names in the current folder and its subfolders. |
+| Command-Shift-F or Control-Shift-F | Search names in the current folder and its subfolders. |
 
 For a filter, type part of a name. Only matching items stay in the list. The filter does not search subfolders. Its menu command is **이 폴더에서 이름 거르기**.
 

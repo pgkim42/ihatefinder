@@ -191,6 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ]))
         main.addItem(menu("보기", [
             item("미리보기 (Space)", #selector(BrowserWindowController.previewSelection), "y", .command),
+            item("새로 고침", #selector(BrowserWindowController.refreshFolder), "r", .command),
             item("숨김 파일", #selector(BrowserWindowController.toggleHidden), ".", [.command, .shift]),
             item("양쪽 창", #selector(BrowserWindowController.toggleDual), "", []),
             item("축소판 보기", #selector(BrowserWindowController.toggleThumbnails), "", []),

@@ -71,6 +71,17 @@ final class KeyCommandTests: XCTestCase {
         XCTAssertEqual(resolve(37, "l", .control, table), .focusPath)
     }
 
+    func testExplorerAddressRefreshAndSearchShortcuts() {
+        for context in [table, text] {
+            XCTAssertEqual(resolve(2, "d", .option, context), .focusPath)
+            XCTAssertEqual(resolve(15, "r", .control, context), .refresh)
+            XCTAssertEqual(resolve(15, "r", .command, context), .refresh)
+            XCTAssertEqual(resolve(3, "f", [.control, .shift], context), .search)
+            XCTAssertNil(resolve(2, "d", [.option, .shift], context))
+            XCTAssertNil(resolve(15, "r", [.control, .shift], context))
+        }
+    }
+
     func testOtherListShortcutsAreUnchanged() {
         XCTAssertEqual(resolve(123, "", .option, table), .goBack)
         XCTAssertEqual(resolve(124, "", .option, table), .goForward)

@@ -1,5 +1,6 @@
 import AppKit
 import Quartz
+import IHateFinderCore
 
 final class FileTableView: NSTableView, NSMenuItemValidation {
     weak var pane: FilePaneController?
@@ -38,22 +39,35 @@ final class FileTableView: NSTableView, NSMenuItemValidation {
             toggleSelection(atRow: row(at: convert(event.locationInWindow, from: nil)))
             return
         }
-        if event.clickCount > 1 {
-            renameGeneration += 1
-        }
+        cancelPendingRename()
         let local = convert(event.locationInWindow, from: nil)
         let row = self.row(at: local)
-        let alreadySelected = row >= 0 && selectedRowIndexes.contains(row)
-        let generation = renameGeneration
+        let column = self.column(at: local)
+        let plain = event.modifierFlags.intersection([.command, .shift, .control, .option]).isEmpty
+        let soleSelected = row >= 0 && selectedRowIndexes == IndexSet(integer: row)
+        let onName = column >= 0 && tableColumns[column].identifier.rawValue == SortColumn.name.rawValue
         super.mouseDown(with: event)
-        guard event.clickCount == 1, alreadySelected, selectedRow == row else { return }
+        guard plain, onName, soleSelected, event.clickCount == 1,
+              selectedRowIndexes == IndexSet(integer: row) else { return }
+        let generation = renameGeneration
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
             guard let self,
                   self.renameGeneration == generation,
-                  self.selectedRow == row,
+                  self.selectedRowIndexes == IndexSet(integer: row),
                   self.window?.firstResponder === self else { return }
             self.pane?.beginRename()
         }
+    }
+
+    /// Any selection change (keyboard, type-select, programmatic) voids a pending click-to-rename.
+    override func selectRowIndexes(_ indexes: IndexSet, byExtendingSelection extend: Bool) {
+        cancelPendingRename()
+        super.selectRowIndexes(indexes, byExtendingSelection: extend)
+    }
+
+    override func deselectRow(_ row: Int) {
+        cancelPendingRename()
+        super.deselectRow(row)
     }
 
     /// 편집 > 실행 취소 and Ctrl+Z reach the list through the responder chain.
@@ -120,6 +134,7 @@ final class FileTableView: NSTableView, NSMenuItemValidation {
     }
 
     override func keyDown(with event: NSEvent) {
+        cancelPendingRename()
         if FileTableView.isQuickLookKey(event), editedRow < 0 {
             pane?.toggleQuickLook()
             return

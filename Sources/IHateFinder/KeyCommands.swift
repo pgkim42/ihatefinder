@@ -5,6 +5,8 @@ import AppKit
 enum KeyCommand: Equatable {
     case focusPath
     case find
+    case search
+    case refresh
     case send(Selector)
     case copy
     case cut
@@ -37,6 +39,15 @@ enum KeyCommand: Equatable {
         let shift = flags.contains(.shift)
         let key = characters.lowercased()
 
+        if option && !command && !control && !shift && key == "d" {
+            return .focusPath
+        }
+        if (command || control) && !option && !shift && key == "r" {
+            return .refresh
+        }
+        if control && !command && !option && shift && key == "f" {
+            return .search
+        }
         if (command || control) && !option && !shift && key == "l" {
             return .focusPath
         }

@@ -2,10 +2,12 @@ import AppKit
 import Quartz
 import IHateFinderCore
 
-final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate, NSMenuItemValidation {
+final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
     let left: FilePaneController
     let right: FilePaneController
-    let sidebar = NSTableView()
+    let folderTree = FolderTreeController()
+    var sidebar: NSOutlineView { folderTree.outlineView }
+    private var actionButtons: [NSButton] = []
     private let status = NSTextField(labelWithString: "")
     private let transferProgress = NSProgressIndicator()
     private let cancelTransferButton = StudioTextButton(frame: .zero)
@@ -15,11 +17,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         _ = paneSplitController.view
         return paneSplitController.splitView
     }
-    private var places: [SidebarItem] = []
     private var focused: FilePaneController
     private(set) var dual = false
     var busy = false {
-        didSet { onFileOperationStateChange?() }
+        didSet {
+            updateActionButtons()
+            onFileOperationStateChange?()
+        }
     }
     var onFileOperationStateChange: (() -> Void)?
     var onBecameActive: (() -> Void)?
@@ -145,6 +149,9 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     func updateStatus() {
         if shouldSaveWorkspace != nil || window?.isKeyWindow == true { saveWorkspace() }
+        updateActionButtons()
+        folderTree.setIncludeHidden(focused.session.includeHidden)
+        folderTree.syncHighlight(to: focused.session.url)
         guard !busy else { return }
         status.stringValue = focused.summary()
         window?.title = focused.session.url.lastPathComponent
@@ -207,6 +214,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc private func syncClipboard() {
         if clipboard.synchronize() { publishClipboardChange() }
         reloadTables()
+        folderTree.refresh()
     }
 
     func runFocusRepro() -> String {
@@ -681,13 +689,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard menu === sidebar.menu else { return }
-        let row = sidebar.clickedRow >= 0 ? sidebar.clickedRow : sidebar.selectedRow
-        let url: URL?
-        if places.indices.contains(row), case .favorite(let favorite) = places[row] {
-            url = favorite
-        } else {
-            url = nil
-        }
+        let url = folderTree.contextFavoriteURL
         let index = url.flatMap { favoritePlaces.firstIndex(of: $0) }
         for item in menu.items {
             item.representedObject = url
@@ -724,6 +726,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     @objc func goForwardAction() { focused.goForward() }
     @objc func goUpAction() { focused.goUp() }
 
+    @objc func refreshFolder() {
+        guard !focused.isRenaming else { return }
+        focused.table.cancelPendingRename()
+        focused.session.reload()
+        folderTree.refresh()
+    }
+
     @objc func toggleHidden() {
         let hidden = !focused.session.includeHidden
         left.session.includeHidden = hidden
@@ -744,9 +753,10 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     }
 
     @objc func refreshPlaces() {
-        places = Self.loadPlaces(favorites: favoritePlaces)
+        folderTree.setSections(Self.loadPlaces(favorites: favoritePlaces))
+        folderTree.setIncludeHidden(focused.session.includeHidden)
+        folderTree.syncHighlight(to: focused.session.url)
         placesRevision += 1
-        sidebar.reloadData()
     }
 
     private func installContent() {
@@ -760,6 +770,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         buttons.addArrangedSubview(toolbarButton("뒤로", #selector(goBackAction), "chevron.left"))
         buttons.addArrangedSubview(toolbarButton("앞으로", #selector(goForwardAction), "chevron.right"))
         buttons.addArrangedSubview(toolbarButton("위", #selector(goUpAction), "chevron.up"))
+        buttons.addArrangedSubview(toolbarButton("새로 고침 (Command-R / Control-R)", #selector(refreshFolder), "arrow.clockwise"))
         let cluster = StudioCanvas()
         cluster.fill = Studio.chip
         cluster.cornerRadius = 12
@@ -804,16 +815,48 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
 
         let headerRule = StudioHairline()
 
-        sidebar.headerView = nil
-        sidebar.rowHeight = 32
-        sidebar.allowsEmptySelection = true
-        sidebar.selectionHighlightStyle = .none
-        sidebar.focusRingType = .none
-        sidebar.backgroundColor = Studio.rail
-        sidebar.dataSource = self
-        sidebar.delegate = self
-        sidebar.target = self
-        sidebar.action = #selector(openPlace)
+        let commands = NSStackView()
+        commands.orientation = .horizontal
+        commands.spacing = 6
+        commands.alignment = .centerY
+        commands.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
+        for (title, action, hint) in [
+            ("새 폴더", #selector(makeFolder), "Command-Shift-N / Control-Shift-N"),
+            ("잘라두기", #selector(cut(_:)), "Command-X / Control-X"),
+            ("복사", #selector(copy(_:)), "Command-C / Control-C"),
+            ("붙여넣기", #selector(paste(_:)), "Command-V / Control-V"),
+            ("이름 바꾸기", #selector(beginRename), "F2"),
+            ("휴지통", #selector(trashSelection), "Command-Delete / fn-Delete"),
+            ("미리보기", #selector(previewSelection), "Space"),
+            ("하위 폴더 검색", #selector(showRecursiveSearch), "Command-Shift-F / Control-Shift-F"),
+        ] {
+            let button = StudioTextButton(frame: .zero)
+            button.title = title
+            button.target = self
+            button.action = action
+            button.refusesFirstResponder = true
+            button.toolTip = "\(title) (\(hint))"
+            button.setAccessibilityLabel(title)
+            button.widthAnchor.constraint(equalToConstant: max(52, CGFloat(title.count) * 13 + 20)).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 28).isActive = true
+            actionButtons.append(button)
+            commands.addArrangedSubview(button)
+        }
+        let commandSpacer = NSView()
+        commandSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        commands.addArrangedSubview(commandSpacer)
+        let commandsRule = StudioHairline()
+
+        _ = folderTree.view
+        folderTree.onNavigate = { [weak self] url in
+            guard let self else { return }
+            self.focused.navigateSidebar(url)
+            self.window?.makeFirstResponder(self.focused.table)
+        }
+        folderTree.onLoadFinished = { [weak self] _, applied in
+            guard let self, applied else { return }
+            self.folderTree.syncHighlight(to: self.focused.session.url)
+        }
         let placesMenu = NSMenu()
         placesMenu.autoenablesItems = false
         placesMenu.delegate = self
@@ -828,22 +871,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             placesMenu.addItem(item)
         }
         sidebar.menu = placesMenu
-        sidebar.style = .plain
-        sidebar.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        sidebar.intercellSpacing = NSSize(width: 0, height: 2)
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("place"))
-        column.title = ""
-        column.width = 220
-        column.minWidth = 180
-        sidebar.addTableColumn(column)
-        let sidebarScroll = NSScrollView()
-        sidebarScroll.documentView = sidebar
-        sidebarScroll.hasVerticalScroller = true
-        sidebarScroll.autohidesScrollers = true
-        sidebarScroll.scrollerStyle = .overlay
-        sidebarScroll.drawsBackground = true
-        sidebarScroll.backgroundColor = Studio.rail
-        sidebarScroll.borderType = .noBorder
 
         paneSplit.isVertical = true
         paneSplit.dividerStyle = .thin
@@ -856,9 +883,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         paneSplitController.addSplitViewItem(leftItem)
         paneSplitController.addSplitViewItem(rightItem)
 
-        let sidebarController = NSViewController()
-        sidebarController.view = sidebarScroll
-        let sidebarItem = NSSplitViewItem(viewController: sidebarController)
+        let sidebarItem = NSSplitViewItem(viewController: folderTree)
         sidebarItem.minimumThickness = 180
         sidebarItem.maximumThickness = 280
         sidebarItem.canCollapse = false
@@ -899,7 +924,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let footerRule = StudioHairline()
 
-        for item in [header, headerRule, outer, footerRule, footer] {
+        for item in [header, headerRule, commands, commandsRule, outer, footerRule, footer] {
             item.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(item)
         }
@@ -912,7 +937,15 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             headerRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             headerRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             headerRule.heightAnchor.constraint(equalToConstant: 1),
-            outer.topAnchor.constraint(equalTo: headerRule.bottomAnchor),
+            commands.topAnchor.constraint(equalTo: headerRule.bottomAnchor),
+            commands.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            commands.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            commands.heightAnchor.constraint(equalToConstant: 44),
+            commandsRule.topAnchor.constraint(equalTo: commands.bottomAnchor),
+            commandsRule.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            commandsRule.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            commandsRule.heightAnchor.constraint(equalToConstant: 1),
+            outer.topAnchor.constraint(equalTo: commandsRule.bottomAnchor),
             outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             footerRule.topAnchor.constraint(equalTo: outer.bottomAnchor),
@@ -961,6 +994,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         switch command {
         case .focusPath: focused.focusPath()
         case .find: focused.showFilter()
+        case .search: focused.showRecursiveSearch()
+        case .refresh: refreshFolder()
         case .info: focused.showInfo()
         case .send(let selector): NSApp.sendAction(selector, to: nil, from: nil)
         case .copy: copy(nil)
@@ -1014,11 +1049,13 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         left.session.reload()
         right.session.reload()
         updateStatus()
+        folderTree.refresh()
     }
 
     private func reloadTables() {
-        left.table.reloadData()
-        right.table.reloadData()
+        left.show()
+        right.show()
+        updateActionButtons()
     }
 
     private func askConflict(_ context: FileConflictContext, canCancelTransfer: Bool) -> FileConflictDecision {
@@ -1053,6 +1090,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
     private func toolbarButton(_ title: String, _ action: Selector, _ symbol: String) -> NSButton {
         let button = StudioIconButton(title: title, symbol: symbol, action: action)
         button.target = self
+        button.refusesFirstResponder = true
+        actionButtons.append(button)
         button.widthAnchor.constraint(equalToConstant: 30).isActive = true
         button.heightAnchor.constraint(equalToConstant: 28).isActive = true
         return button
@@ -1064,116 +1103,32 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return button
     }
 
-    @objc func openPlace() {
-        let row = sidebar.clickedRow >= 0 ? sidebar.clickedRow : sidebar.selectedRow
-        guard places.indices.contains(row) else { return }
-        let url: URL
-        switch places[row] {
-        case .place(_, let place, _), .favorite(let place): url = place
-        case .header: return
+    private func updateActionButtons() {
+        let selection = focused.selectedURLs()
+        let ready = !busy && !focused.session.isLoading && focused.session.persistedState != nil
+        let editing = focused.isRenaming
+        for button in actionButtons {
+            switch button.action {
+            case #selector(goBackAction): button.isEnabled = focused.session.canGoBack && !editing
+            case #selector(goForwardAction): button.isEnabled = focused.session.canGoForward && !editing
+            case #selector(goUpAction): button.isEnabled = focused.session.url.path != "/" && !editing
+            case #selector(refreshFolder): button.isEnabled = !focused.session.isLoading && !editing
+            case #selector(makeFolder): button.isEnabled = ready && !editing && !focused.recursiveSearchVisible
+            case #selector(cut(_:)), #selector(copy(_:)), #selector(trashSelection):
+                button.isEnabled = ready && !editing && !selection.isEmpty
+            case #selector(paste(_:)):
+                button.isEnabled = ready && !editing && !focused.recursiveSearchVisible && clipboard.snapshot() != nil
+            case #selector(beginRename): button.isEnabled = ready && !editing && selection.count == 1
+            case #selector(previewSelection): button.isEnabled = !editing && !selection.isEmpty
+            default: button.isEnabled = !editing
+            }
         }
+    }
+
+    @objc func openPlace() {
+        guard let url = folderTree.contextFolderURL else { return }
         focused.navigateSidebar(url)
         window?.makeFirstResponder(focused.table)
-    }
-
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        places.count
-    }
-
-    func tableView(_ tableView: NSTableView, isGroupRow row: Int) -> Bool {
-        false
-    }
-
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        if case .header = places[row] { return 22 }
-        return 32
-    }
-
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-        let rowView = tableView.makeView(
-            withIdentifier: NSUserInterfaceItemIdentifier("studio-sidebar-row"),
-            owner: self
-        ) as? StudioRowView ?? StudioRowView()
-        rowView.identifier = NSUserInterfaceItemIdentifier("studio-sidebar-row")
-        rowView.surface = Studio.rail
-        rowView.horizontalInset = 8
-        return rowView
-    }
-
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        if case .header = places[row] { return false }
-        return true
-    }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let selected = tableView.selectedRowIndexes.contains(row)
-        switch places[row] {
-        case .header(let title):
-            let cell = sidebarCell(tableView, identifier: "header", symbol: nil)
-            cell.textField?.stringValue = title
-            cell.textField?.font = Studio.sectionFont
-            cell.textField?.textColor = Studio.muted
-            return cell
-        case .place(let title, _, let symbol):
-            let cell = sidebarCell(tableView, identifier: "place", symbol: symbol)
-            cell.textField?.stringValue = title
-            cell.textField?.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .regular)
-            cell.textField?.textColor = Studio.ink
-            cell.imageView?.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            cell.imageView?.contentTintColor = selected ? Studio.accent : Studio.muted
-            return cell
-        case .favorite(let url):
-            let cell = sidebarCell(tableView, identifier: "favorite", symbol: "star.fill")
-            cell.textField?.stringValue = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
-            cell.textField?.font = .systemFont(ofSize: 13, weight: selected ? .semibold : .medium)
-            cell.textField?.textColor = Studio.ink
-            cell.imageView?.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: nil)
-            cell.imageView?.contentTintColor = Studio.accent
-            cell.toolTip = url.path
-            return cell
-        }
-    }
-
-    func tableViewSelectionDidChange(_ notification: Notification) {
-        let rows = IndexSet(integersIn: 0..<places.count)
-        sidebar.reloadData(forRowIndexes: rows, columnIndexes: IndexSet(integer: 0))
-    }
-
-    private func sidebarCell(_ tableView: NSTableView, identifier: String, symbol: String?) -> NSTableCellView {
-        let id = NSUserInterfaceItemIdentifier(identifier)
-        if let cell = tableView.makeView(withIdentifier: id, owner: self) as? NSTableCellView {
-            return cell
-        }
-        let cell = NSTableCellView()
-        cell.identifier = id
-        let text = NSTextField(labelWithString: "")
-        text.translatesAutoresizingMaskIntoConstraints = false
-        text.lineBreakMode = .byTruncatingTail
-        cell.addSubview(text)
-        cell.textField = text
-        if symbol != nil {
-            let image = NSImageView()
-            image.translatesAutoresizingMaskIntoConstraints = false
-            image.imageScaling = .scaleProportionallyDown
-            cell.addSubview(image)
-            cell.imageView = image
-            NSLayoutConstraint.activate([
-                image.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
-                image.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                image.widthAnchor.constraint(equalToConstant: 16),
-                image.heightAnchor.constraint(equalToConstant: 16),
-                text.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 6),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            ])
-        } else {
-            NSLayoutConstraint.activate([
-                text.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
-                text.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
-                text.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            ])
-        }
-        return cell
     }
 
     private static func makeSession(ops: FileOps) -> BrowserSession {
@@ -1181,24 +1136,25 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
         return BrowserSession(url: home, ops: ops)
     }
 
-    private static func loadPlaces(favorites: [URL]) -> [SidebarItem] {
+    private static func loadPlaces(favorites: [URL]) -> [FolderTreeSection] {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
-        var items: [SidebarItem] = [
-            .header("즐겨찾기"),
+        var sections = [
+            FolderTreeSection(title: "즐겨찾기", roots: favorites.map {
+                FolderTreeRoot(title: $0.lastPathComponent.isEmpty ? $0.path : $0.lastPathComponent,
+                               url: $0, symbol: "star.fill", isFavorite: true)
+            }),
+            FolderTreeSection(title: "위치", roots: [
+                FolderTreeRoot(title: "홈", url: home, symbol: "house.fill", isFavorite: false),
+                FolderTreeRoot(title: "데스크탑", url: home.appendingPathComponent("Desktop"), symbol: "desktopcomputer", isFavorite: false),
+                FolderTreeRoot(title: "문서", url: home.appendingPathComponent("Documents"), symbol: "doc.text.fill", isFavorite: false),
+                FolderTreeRoot(title: "다운로드", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle.fill", isFavorite: false),
+                FolderTreeRoot(title: "응용 프로그램", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "square.grid.2x2.fill", isFavorite: false),
+            ]),
         ]
-        items.append(contentsOf: favorites.map(SidebarItem.favorite))
-        items.append(contentsOf: [
-            .header("위치"),
-            .place(title: "홈", url: home, symbol: "house.fill"),
-            .place(title: "데스크탑", url: home.appendingPathComponent("Desktop"), symbol: "desktopcomputer"),
-            .place(title: "문서", url: home.appendingPathComponent("Documents"), symbol: "doc.text.fill"),
-            .place(title: "다운로드", url: home.appendingPathComponent("Downloads"), symbol: "arrow.down.circle.fill"),
-            .place(title: "응용 프로그램", url: URL(fileURLWithPath: "/Applications", isDirectory: true), symbol: "square.grid.2x2.fill"),
-        ])
         let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsBrowsableKey, .volumeIsEjectableKey]
         let volumes = fm.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) ?? []
-        var disks: [SidebarItem] = []
+        var disks: [FolderTreeRoot] = []
         for volume in volumes {
             let path = volume.standardizedFileURL.path
             let inVolumes = path == "/Volumes" || path.hasPrefix("/Volumes/")
@@ -1207,18 +1163,11 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSTab
             if values?.volumeIsBrowsable == false { continue }
             let name = values?.volumeName ?? volume.lastPathComponent
             let symbol = values?.volumeIsEjectable == true ? "externaldrive.fill" : "internaldrive.fill"
-            disks.append(.place(title: name, url: volume, symbol: symbol))
+            disks.append(FolderTreeRoot(title: name, url: volume, symbol: symbol, isFavorite: false))
         }
         if !disks.isEmpty {
-            items.append(.header("디스크"))
-            items.append(contentsOf: disks)
+            sections.append(FolderTreeSection(title: "디스크", roots: disks))
         }
-        return items
+        return sections
     }
-}
-
-private enum SidebarItem {
-    case header(String)
-    case place(title: String, url: URL, symbol: String)
-    case favorite(URL)
 }
